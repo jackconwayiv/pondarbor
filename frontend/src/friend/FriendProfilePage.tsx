@@ -71,6 +71,7 @@ import {
 import {
   fetchPublicUserSummaryByEmail,
   fetchPublicUserSummaryById,
+  currentlyReadingLine,
   friendDisplayName,
   friendProfileHeading,
   type PublicUserSummary,
@@ -404,7 +405,7 @@ export default function FriendProfilePage() {
     canViewFullProfile,
     peopleCount: summary?.people_count,
   });
-  const hasReadingTab = Boolean(summary?.has_goodreads);
+  const currentlyReadingText = currentlyReadingLine(summary?.currently_reading);
   const friendshipStatus = summary?.friendship_status ?? "none";
   const canManageFriendshipById = lookup.kind === "id";
   const leftmostVisibleTab = useMemo<
@@ -987,6 +988,31 @@ export default function FriendProfilePage() {
                   />
                 </Box>
               ) : null}
+              {currentlyReadingText && profileSubjectUserId != null ? (
+                <Box
+                  px={{ base: "2", md: "2" }}
+                  pt="2"
+                  pb="0"
+                  w="100%"
+                  role="button"
+                  tabIndex={0}
+                  cursor="pointer"
+                  color="fg.muted"
+                  fontSize={APP_TEXT_SIZES.meta}
+                  lineHeight="short"
+                  onClick={() =>
+                    navigate(`/books?users=${profileSubjectUserId}`)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      navigate(`/books?users=${profileSubjectUserId}`);
+                    }
+                  }}
+                >
+                  {currentlyReadingText}
+                </Box>
+              ) : null}
               <Tabs.Root
                 value={profileTab}
                 display="flex"
@@ -994,13 +1020,7 @@ export default function FriendProfilePage() {
                 flex="1"
                 minH="0"
                 w="100%"
-                onValueChange={(details) => {
-                  if (details.value === "reading") {
-                    if (profileSubjectUserId != null) {
-                      navigate(`/books?users=${profileSubjectUserId}`);
-                    }
-                    return;
-                  }
+                onValueChange={(details) =>
                   setProfileTab(
                     details.value as
                       | "friends"
@@ -1009,8 +1029,8 @@ export default function FriendProfilePage() {
                       | "closet"
                       | "recommendations"
                       | "people",
-                  );
-                }}
+                  )
+                }
                 variant="plain"
               >
                 <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
@@ -1028,14 +1048,6 @@ export default function FriendProfilePage() {
                   >
                     Friends
                   </Tabs.Trigger>
-                  {hasReadingTab ? (
-                    <Tabs.Trigger
-                      value="reading"
-                      {...APP_SHELL_TAB_TRIGGER_PROPS}
-                    >
-                      Reading
-                    </Tabs.Trigger>
-                  ) : null}
                   {hasFamilyTreeTab ? (
                     <Tabs.Trigger
                       value="people"

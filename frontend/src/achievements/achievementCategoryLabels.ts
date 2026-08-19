@@ -14,6 +14,7 @@ const CATEGORY_META: Record<string, { label: string; emoji: string; to: string }
   estates: { label: "Estates", emoji: "🏰", to: "/estates" },
   onboarding: { label: "Pond Arbor", emoji: "👋", to: "/" },
   recommendations: { label: "Recommenda", emoji: "👍", to: "/recommendations" },
+  books: { label: "Books", emoji: "📚", to: "/books" },
 };
 
 const GENERAL_META = { label: "Pond Arbor", emoji: "🏆", to: "/" };

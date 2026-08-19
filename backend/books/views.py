@@ -14,6 +14,7 @@ from books.social import (
     reader_row,
     visible_books_users_qs,
 )
+from achievements.services import evaluate_reads_good_for_user
 from users.permissions import IsApprovedUser
 from users.serializers import MeSerializer
 from users.views import get_or_create_profile, serialize_me
@@ -52,6 +53,10 @@ def books_link(request):
 
     refresh = str(request.data.get("refresh", "")).lower() in ("1", "true", "yes")
     shelves_payload = fetch_all_shelves(user_id, use_cache=not refresh)
+    evaluate_reads_good_for_user(
+        request.user.pk,
+        shelves_payload.get("shelves"),
+    )
     return Response(
         {
             "linked": True,
@@ -128,4 +133,14 @@ def books_community(request):
         "true",
         "yes",
     )
-    return Response(community_payload(request.user, use_cache=not refresh))
+    payload = community_payload(request.user, use_cache=not refresh)
+    viewer_id = request.user.pk
+    viewer_row = next(
+        (row for row in payload.get("results") or [] if row.get("user", {}).get("id") == viewer_id),
+        None,
+    )
+    evaluate_reads_good_for_user(
+        viewer_id,
+        viewer_row.get("shelves") if viewer_row else [],
+    )
+    return Response(payload)

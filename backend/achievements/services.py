@@ -158,6 +158,7 @@ SLUG_GOALS_ON_TARGET = "goals_on_target"
 SLUG_RECOMMENDATIONS_TEN_TEN_NO_NOTES = "recommendations_ten_ten_no_notes"
 SLUG_RECOMMENDATIONS_AND_ALSO = "recommendations_and_also"
 SLUG_RECOMMENDATIONS_FIVE_STARS = "recommendations_five_stars"
+SLUG_READS_GOOD = "reads_good"
 SLUG_SCORENADO_GAME_PLAYER = "scorenado_game_player"
 SLUG_SCORENADO_HAT_TRICK = "scorenado_hat_trick"
 SLUG_SCORENADO_DROSSELMEYER = "scorenado_drosselmeyer"
@@ -582,6 +583,14 @@ def evaluate_goals_achievements_for_user(user_id: int) -> None:
             SLUG_GOALS_ON_TARGET,
             context={"completed_projects": completed_projects},
         )
+
+
+def evaluate_reads_good_for_user(user_id: int, shelves: list | None) -> None:
+    """Unlock when the user has at least one book on a Books community shelf."""
+    from books.social import community_feed_has_books
+
+    if community_feed_has_books(shelves or []):
+        _try_unlock(user_id, SLUG_READS_GOOD)
 
 
 def evaluate_recommendations_share_for_user(user_id: int) -> None:

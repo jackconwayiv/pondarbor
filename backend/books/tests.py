@@ -131,6 +131,70 @@ class BooksApiTests(TestCase):
         self.assertEqual(resp.data["session"]["profile"]["goodreads_user_id"], "152185079")
 
     @mock.patch("books.views.fetch_all_shelves")
+    @mock.patch("books.views.parse_goodreads_user_id", return_value="152185079")
+    def test_link_with_community_book_awards_reads_good(self, _parse_mock, fetch_mock):
+        from achievements.models import UserAchievement
+        from achievements.services import SLUG_READS_GOOD
+
+        fetch_mock.return_value = {
+            "goodreads_user_id": "152185079",
+            "profile_url": "https://www.goodreads.com/user/show/152185079",
+            "shelves": [
+                {
+                    "slug": "read",
+                    "label": "Read",
+                    "book_count": 1,
+                    "books": [{"title": "Joe Country", "author_name": "Mick Herron"}],
+                },
+            ],
+        }
+        payload = {
+            "profile_url": "https://www.goodreads.com/user/show/152185079",
+        }
+        resp = self.client.post("/api/v1/books/link/", payload, format="json")
+        self.assertEqual(resp.status_code, 200)
+        resp = self.client.post("/api/v1/books/link/", payload, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            UserAchievement.objects.filter(
+                user=self.user,
+                achievement__slug=SLUG_READS_GOOD,
+            ).count(),
+            1,
+        )
+
+    @mock.patch("books.views.fetch_all_shelves")
+    @mock.patch("books.views.parse_goodreads_user_id", return_value="152185079")
+    def test_link_empty_shelves_does_not_award_reads_good(self, _parse_mock, fetch_mock):
+        from achievements.models import UserAchievement
+        from achievements.services import SLUG_READS_GOOD
+
+        fetch_mock.return_value = {
+            "goodreads_user_id": "152185079",
+            "profile_url": "https://www.goodreads.com/user/show/152185079",
+            "shelves": [
+                {
+                    "slug": "currently-reading",
+                    "label": "Currently Reading",
+                    "book_count": 0,
+                    "books": [],
+                },
+            ],
+        }
+        resp = self.client.post(
+            "/api/v1/books/link/",
+            {"profile_url": "https://www.goodreads.com/user/show/152185079"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.user,
+                achievement__slug=SLUG_READS_GOOD,
+            ).exists()
+        )
+
+    @mock.patch("books.views.fetch_all_shelves")
     def test_shelves_requires_link(self, fetch_mock):
         resp = self.client.get("/api/v1/books/shelves/")
         self.assertEqual(resp.status_code, 400)
@@ -274,6 +338,38 @@ class BooksSocialPrivacyTests(TestCase):
             "Joe Country",
         )
         self.assertEqual(fetch_mock.call_count, 12)
+
+    @mock.patch("books.social.fetch_shelf_books_cached")
+    def test_community_awards_reads_good_for_viewer_only(self, fetch_mock):
+        from achievements.models import UserAchievement
+        from achievements.services import SLUG_READS_GOOD
+
+        def fetch_side(goodreads_user_id, slug, *, use_cache=True):
+            if goodreads_user_id == "111":
+                return []
+            return [{"title": "Joe Country", "author_name": "Mick Herron"}]
+
+        fetch_mock.side_effect = fetch_side
+        resp = self.alice_client.get("/api/v1/books/community/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.alice,
+                achievement__slug=SLUG_READS_GOOD,
+            ).exists()
+        )
+
+        fetch_mock.side_effect = lambda *args, **kwargs: [
+            {"title": "Dune", "author_name": "Frank Herbert"}
+        ]
+        resp = self.alice_client.get("/api/v1/books/community/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.alice,
+                achievement__slug=SLUG_READS_GOOD,
+            ).exists()
+        )
 
     def test_pending_user_cannot_access_community(self):
         pending = User.objects.create_user(

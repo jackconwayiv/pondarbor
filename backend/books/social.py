@@ -73,6 +73,51 @@ def visible_books_users_qs(viewer, *, search: str = "") -> QuerySet:
     return qs.order_by("profile__display_name", "email")
 
 
+def community_feed_has_books(shelves: list | None) -> bool:
+    """True if any of the four Books community shelves has at least one title."""
+    wanted = set(COMMUNITY_SHELF_ORDER)
+    for row in shelves or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("slug") not in wanted:
+            continue
+        books = row.get("books") or []
+        if len(books) >= 1:
+            return True
+    return False
+
+
+def currently_reading_preview(viewer, user) -> list[dict[str, str]]:
+    """
+    Title/author rows from the subject's currently-reading shelf, or [].
+
+    Empty when the viewer cannot see this reader in Books, the shelf errors,
+    or there are no titles. Uses the same RSS cache as community shelves.
+    """
+    if not visible_books_users_qs(viewer).filter(pk=user.pk).exists():
+        return []
+    profile = getattr(user, "profile", None)
+    gr_id = (getattr(profile, "goodreads_user_id", None) or "").strip()
+    if not gr_id:
+        return []
+    try:
+        books = fetch_shelf_books_cached(gr_id, "currently-reading", use_cache=True)
+    except Exception:  # noqa: BLE001 — profile should not fail on RSS
+        return []
+    preview: list[dict[str, str]] = []
+    for book in books:
+        title = str(book.get("title") or "").strip()
+        if not title:
+            continue
+        preview.append(
+            {
+                "title": title,
+                "author_name": str(book.get("author_name") or "").strip(),
+            }
+        )
+    return preview
+
+
 def reader_row(user) -> dict:
     profile = getattr(user, "profile", None)
     display_name = ""

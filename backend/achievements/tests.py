@@ -48,8 +48,10 @@ from achievements.services import (
     SLUG_GOALS_STREAK_WEEK,
     SLUG_GOALS_TRI_GOAL_ATHLON,
     SLUG_WELCOME_TO_POND_ARBOR,
+    SLUG_READS_GOOD,
     evaluate_goals_achievements_for_user,
     evaluate_welcome_to_pond_arbor_for_user,
+    evaluate_reads_good_for_user,
 )
 from datetime import date, timedelta
 
@@ -1207,6 +1209,44 @@ class WelcomeToPondArborAchievementTests(TestCase):
                 achievement__slug=SLUG_WELCOME_TO_POND_ARBOR,
             ).count(),
             1,
+        )
+
+
+class ReadsGoodAchievementTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            email="readsgood@example.com",
+            password="secret12345",
+        )
+
+    def test_evaluate_unlocks_once_with_community_book(self):
+        shelves = [
+            {
+                "slug": "currently-reading",
+                "books": [{"title": "Dune", "author_name": "Frank Herbert"}],
+            }
+        ]
+        evaluate_reads_good_for_user(self.user.id, shelves)
+        evaluate_reads_good_for_user(self.user.id, shelves)
+        self.assertEqual(
+            UserAchievement.objects.filter(
+                user=self.user,
+                achievement__slug=SLUG_READS_GOOD,
+            ).count(),
+            1,
+        )
+
+    def test_evaluate_skips_empty_and_non_community_shelves(self):
+        evaluate_reads_good_for_user(self.user.id, [])
+        evaluate_reads_good_for_user(
+            self.user.id,
+            [{"slug": "paused", "books": [{"title": "Custom only"}]}],
+        )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.user,
+                achievement__slug=SLUG_READS_GOOD,
+            ).exists()
         )
 
 

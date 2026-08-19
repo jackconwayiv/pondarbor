@@ -59,6 +59,7 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   recommendations_ten_ten_no_notes: "👍",
   recommendations_and_also: "👌",
   recommendations_five_stars: "⭐",
+  reads_good: "📚",
 };
 
 const DEFAULT_EMOJI = "🏆";

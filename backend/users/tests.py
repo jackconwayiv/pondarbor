@@ -91,9 +91,14 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["display_name"], "TargetNick")
         self.assertEqual(body["email"], "target@example.com")
         self.assertEqual(body["closet_items_count"], 0)
-        self.assertFalse(body["has_goodreads"])
+        self.assertEqual(body["currently_reading"], [])
 
-    def test_public_summary_has_goodreads_when_linked_and_visible(self):
+    @patch("books.social.fetch_shelf_books_cached")
+    def test_public_summary_currently_reading_when_linked_and_visible(self, fetch_mock):
+        fetch_mock.return_value = [
+            {"title": "Joe Country", "author_name": "Mick Herron"},
+            {"title": "Dune", "author_name": "Frank Herbert"},
+        ]
         viewer = User.objects.create_user(email="grv@example.com", password="secret12345")
         viewer.account_status = User.AccountStatus.APPROVED
         viewer.save(update_fields=["account_status"])
@@ -107,7 +112,34 @@ class UsersApiTests(TestCase):
         self.client.force_login(viewer)
         resp = self.client.get(f"/api/v1/users/{target.id}/public/")
         self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.json()["has_goodreads"])
+        self.assertEqual(
+            resp.json()["currently_reading"],
+            [
+                {"title": "Joe Country", "author_name": "Mick Herron"},
+                {"title": "Dune", "author_name": "Frank Herbert"},
+            ],
+        )
+        fetch_mock.assert_called_once_with(
+            "152185079", "currently-reading", use_cache=True
+        )
+
+    @patch("books.social.fetch_shelf_books_cached")
+    def test_public_summary_currently_reading_empty_when_shelf_empty(self, fetch_mock):
+        fetch_mock.return_value = []
+        viewer = User.objects.create_user(email="grv2@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="grt2@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        target.profile.goodreads_user_id = "152185079"
+        target.profile.save(update_fields=["goodreads_user_id"])
+        FriendRequest.objects.create(requester=viewer, requested=target, is_accepted=True)
+        FriendRequest.objects.create(requester=target, requested=viewer, is_accepted=True)
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/public/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["currently_reading"], [])
 
     def test_public_summary_friend_includes_birth_and_big_three(self):
         from datetime import date

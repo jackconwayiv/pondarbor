@@ -429,15 +429,11 @@ def _public_user_summary_response(*, request, user):
         from recommendations.services import active_reviews_qs
 
         payload["recommendations_count"] = active_reviews_qs().filter(reviewer=user).count()
-    payload["has_goodreads"] = False
+    payload["currently_reading"] = []
     if can_view_full_profile and viewer_approved:
-        gr_id = (profile.goodreads_user_id or "").strip()
-        if gr_id:
-            from books.social import visible_books_users_qs
+        from books.social import currently_reading_preview
 
-            payload["has_goodreads"] = visible_books_users_qs(viewer).filter(
-                pk=user.pk
-            ).exists()
+        payload["currently_reading"] = currently_reading_preview(viewer, user)
     if can_view_full_profile:
         from people.models import Person
         from zodiac.models import AstroProfile

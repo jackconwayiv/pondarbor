@@ -1,3 +1,8 @@
+export type CurrentlyReadingBook = {
+  title: string;
+  author_name: string;
+};
+
 export type PublicUserSummary = {
   id?: number;
   nickname: string;
@@ -18,8 +23,8 @@ export type PublicUserSummary = {
   recommendations_count?: number;
   /** Active family tree members including self (when viewer may see full profile). */
   people_count?: number;
-  /** Visible in Books community for this viewer (linked Goodreads + privacy). */
-  has_goodreads?: boolean;
+  /** Currently-reading titles visible in Books for this viewer. */
+  currently_reading?: CurrentlyReadingBook[];
   /** ISO date; only when viewer may see full profile and friend set a birthday. */
   birth_date?: string;
   sun_sign?: string;
@@ -32,6 +37,21 @@ export type PublicUserSummary = {
 
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
+}
+
+/** Compact currently-reading line, or null when there is nothing to show. */
+export function currentlyReadingLine(
+  books: CurrentlyReadingBook[] | undefined | null,
+): string | null {
+  const parts: string[] = [];
+  for (const book of books ?? []) {
+    const title = book.title.trim();
+    if (!title) continue;
+    const author = (book.author_name || "").trim();
+    parts.push(author ? `"${title}" by ${author}` : `"${title}"`);
+  }
+  if (parts.length === 0) return null;
+  return `Currently Reading: ${parts.join(", ")}`;
 }
 
 /** Display name for headings (display_name, else nickname). */

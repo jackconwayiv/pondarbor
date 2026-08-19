@@ -226,6 +226,7 @@ export default function BooksPage() {
     getApiAccessToken,
     sessionUser,
     updateProfileLocally,
+    resyncSessionSilently,
   } = useAppSession();
 
   const isApproved = Boolean(sessionUser?.user.is_approved);
@@ -364,6 +365,7 @@ export default function BooksPage() {
       const token = await getApiAccessToken();
       const data = await linkGoodreadsProfile(token, profileUrl.trim());
       applySession(data.session as SessionUser | undefined);
+      await resyncSessionSilently();
       setCommunityLoaded(false);
       if (data.goodreads_user_id) {
         setProfileUrl(`https://www.goodreads.com/user/show/${data.goodreads_user_id}`);

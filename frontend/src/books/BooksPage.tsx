@@ -7,6 +7,7 @@ import {
   Image,
   Input,
   Link,
+  Grid,
   SimpleGrid,
   Stack,
   Tabs,
@@ -56,7 +57,7 @@ import {
   booksPageCount,
   communityPeople,
   COMMUNITY_SHELF_OPTIONS,
-  formatBookDateMdY,
+  formatReadLabel,
   paginateBooks,
   type BooksListSort,
   viewerShelfError,
@@ -84,18 +85,6 @@ const BOOK_CARD_GRID_PROPS = {
   w: "100%",
   alignItems: "start",
 } as const;
-
-function formatReadLabel(book: GoodreadsBook): string | null {
-  const finish = formatBookDateMdY(book.user_read_at);
-  if (!finish) return null;
-  const start =
-    formatBookDateMdY(book.user_started_at) ?? formatBookDateMdY(book.user_date_added);
-  if (start && start.key !== finish.key) {
-    const [earlier, later] = start.key < finish.key ? [start, finish] : [finish, start];
-    return `Read ${earlier.label} - ${later.label}`;
-  }
-  return `Read ${finish.label}`;
-}
 
 function stars(rating: number): string {
   if (!rating || rating < 1) return "";
@@ -142,7 +131,7 @@ function BookRow({
     );
   return (
     <Box {...MAPPED_CARD_PROPS}>
-      <HStack align="start" gap="2" w="100%">
+      <HStack align="stretch" gap="2" w="100%">
         {cover ? (
           <Image
             src={cover}
@@ -156,21 +145,45 @@ function BookRow({
         ) : (
           <Box w="56px" h="84px" bg="bg.muted" borderRadius="md" flexShrink={0} />
         )}
-        <Stack gap="1" minW={0} flex="1">
-          <HStack align="start" justify="space-between" gap="2" w="100%">
-            <Text fontWeight="semibold" lineClamp={2} minW={0} flex="1">
-              {title}
+        <Stack gap="1" minW={0} flex="1" justify="space-between">
+          <Stack gap="1" minW={0}>
+            <HStack align="start" justify="space-between" gap="2" w="100%">
+              <Text fontWeight="semibold" lineClamp={2} minW={0} flex="1">
+                {title}
+              </Text>
+              {ownerBlock}
+            </HStack>
+            <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper} lineClamp={1}>
+              {book.author_name || "\u00a0"}
             </Text>
-            {ownerBlock}
-          </HStack>
-          <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper} lineClamp={1}>
-            {book.author_name || "\u00a0"}
-          </Text>
-          <HStack gap="2" flexWrap="wrap" color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
-            {rating ? <Text aria-label={`${book.user_rating} stars`}>{rating}</Text> : null}
-            {readLabel ? <Text>{readLabel}</Text> : null}
-            {book.book_published ? <Text>{book.book_published}</Text> : null}
-          </HStack>
+          </Stack>
+          <Grid
+            templateColumns="minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr)"
+            w="100%"
+            alignItems="baseline"
+            columnGap="2"
+            color="fg.muted"
+            fontSize={APP_TEXT_SIZES.helper}
+          >
+            <Text minW={0} textAlign="left">
+              {book.book_published || "\u00a0"}
+            </Text>
+            <Text
+              minW={0}
+              textAlign="center"
+              aria-label={rating ? `${book.user_rating} stars` : undefined}
+            >
+              {rating || "\u00a0"}
+            </Text>
+            <Text
+              minW={0}
+              textAlign="right"
+              fontSize={{ base: "2xs", md: "xs" }}
+              lineClamp={1}
+            >
+              {readLabel || "\u00a0"}
+            </Text>
+          </Grid>
         </Stack>
       </HStack>
     </Box>
@@ -206,7 +219,7 @@ export default function BooksPage() {
   const [communityError, setCommunityError] = useState<string | null>(null);
   const [communityLoaded, setCommunityLoaded] = useState(false);
   const [listPage, setListPage] = useState(1);
-  const [listSort, setListSort] = useState<BooksListSort>("title");
+  const [listSort, setListSort] = useState<BooksListSort>("user");
   const [peopleOpen, setPeopleOpen] = useState(false);
 
   const people = useMemo(() => communityPeople(communityEntries), [communityEntries]);
@@ -421,7 +434,12 @@ export default function BooksPage() {
               >
                 {COMMUNITY_SHELF_OPTIONS.map((opt) => (
                   <Tabs.Trigger key={opt.value} value={opt.value} {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    {opt.label}
+                    <Text as="span" display={{ base: "inline", md: "none" }}>
+                      {opt.shortLabel}
+                    </Text>
+                    <Text as="span" display={{ base: "none", md: "inline" }}>
+                      {opt.label}
+                    </Text>
                   </Tabs.Trigger>
                 ))}
               </Tabs.List>
@@ -533,8 +551,8 @@ export default function BooksPage() {
                                 setListSort(e.target.value as BooksListSort),
                             }}
                           >
+                            <option value="user">User</option>
                             <option value="title">Title</option>
-                            <option value="person">Person</option>
                             <option value="date">Date</option>
                           </PondNativeSelect>
                         </HStack>

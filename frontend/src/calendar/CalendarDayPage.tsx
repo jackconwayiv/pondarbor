@@ -315,6 +315,7 @@ export default function CalendarDayPage() {
                   const color = colorForCheckedUser(
                     ownerId,
                     orderedCheckedUserIds,
+                    approvedUsers.map((u) => u.id),
                   );
                   if (color === null) return null;
                   const owner =

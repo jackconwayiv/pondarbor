@@ -5,16 +5,20 @@ import type {
   GoodreadsBook,
 } from "./types";
 
-export const COMMUNITY_SHELF_OPTIONS: { value: CommunityShelfSlug; label: string }[] = [
-  { value: "currently-reading", label: "Currently Reading" },
-  { value: "to-read", label: "Want to Read" },
-  { value: "did-not-finish", label: "Did Not Finish" },
-  { value: "read", label: "Read" },
+export const COMMUNITY_SHELF_OPTIONS: {
+  value: CommunityShelfSlug;
+  label: string;
+  shortLabel: string;
+}[] = [
+  { value: "currently-reading", label: "Currently Reading", shortLabel: "Reading" },
+  { value: "to-read", label: "Want to Read", shortLabel: "To Read" },
+  { value: "did-not-finish", label: "Did Not Finish", shortLabel: "DNF" },
+  { value: "read", label: "Read", shortLabel: "Finished" },
 ];
 
 export const BOOKS_PAGE_SIZE = 8;
 
-export type BooksListSort = "title" | "person" | "date";
+export type BooksListSort = "user" | "title" | "date";
 
 export type CommunityBookRow = {
   book: GoodreadsBook;
@@ -40,16 +44,20 @@ function pad2(value: number | string): string {
   return String(value).padStart(2, "0");
 }
 
-/** Calendar date only (no time/zone). Returns sortable key + MM/DD/YY label. */
+/** Calendar date only (no time/zone). Sortable key plus MM/YY month label. */
 export function formatBookDateMdY(
   raw: string | undefined,
-): { key: string; label: string } | null {
+): { key: string; monthKey: string; monthLabel: string } | null {
   const s = (raw ?? "").trim();
   if (!s) return null;
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (iso) {
-    const [, year, month, day] = iso;
-    return { key: `${year}-${month}-${day}`, label: `${month}/${day}/${year.slice(-2)}` };
+    const [, year, month] = iso;
+    return {
+      key: `${year}-${month}-${iso[3]}`,
+      monthKey: `${year}-${month}`,
+      monthLabel: `${month}/${year.slice(-2)}`,
+    };
   }
   const rfc =
     /(?:\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+)?(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})/i.exec(
@@ -60,7 +68,24 @@ export function formatBookDateMdY(
   const month = MONTH_ABBR_TO_NUM[rfc[2].slice(0, 3).toLowerCase()];
   const year = rfc[3];
   if (!month) return null;
-  return { key: `${year}-${month}-${day}`, label: `${month}/${day}/${year.slice(-2)}` };
+  return {
+    key: `${year}-${month}-${day}`,
+    monthKey: `${year}-${month}`,
+    monthLabel: `${month}/${year.slice(-2)}`,
+  };
+}
+
+export function formatReadLabel(book: GoodreadsBook): string | null {
+  const finish = formatBookDateMdY(book.user_read_at);
+  if (!finish) return null;
+  const start =
+    formatBookDateMdY(book.user_started_at) ?? formatBookDateMdY(book.user_date_added);
+  if (start && start.monthKey !== finish.monthKey) {
+    const [earlier, later] =
+      start.monthKey < finish.monthKey ? [start, finish] : [finish, start];
+    return `Read ${earlier.monthLabel} - ${later.monthLabel}`;
+  }
+  return `Read ${finish.monthLabel}`;
 }
 
 export function bookDateSortKey(book: GoodreadsBook): string | null {
@@ -128,7 +153,7 @@ export function sortCommunityBooks(
   sort: BooksListSort,
 ): CommunityBookRow[] {
   const copy = [...rows];
-  if (sort === "person") {
+  if (sort === "user") {
     copy.sort((a, b) => {
       const byOwner = compareIgnoreCase(a.owner.display_name, b.owner.display_name);
       if (byOwner !== 0) return byOwner;

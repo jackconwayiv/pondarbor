@@ -700,6 +700,7 @@ export default function CalendarPage() {
                       events={events}
                       birthdays={birthdays}
                       orderedCheckedUserIds={orderedCheckedUserIds}
+                      colorUserIds={approvedUsers.map((u) => u.id)}
                       isDefaultAll={isDefaultAll}
                       onDayClick={handleDayClick}
                     />

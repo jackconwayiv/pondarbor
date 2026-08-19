@@ -12,8 +12,8 @@ export type CheckedUserRow = { id: number };
  * Special values:
  *   - missing or `users=all` → every approved user is checked (default).
  *   - `users=none` (or empty list) → no one is checked.
- *   - `users=1,3,2` → those user ids are checked, in that order (the order
- *     determines the per-user color).
+ *   - `users=1,3,2` → those user ids are checked (order is unused for color;
+ *     colors follow the people list).
  */
 export function useCheckedUsers(approvedUsers: readonly CheckedUserRow[]) {
   const [searchParams, setSearchParams] = useSearchParams();

@@ -15,6 +15,7 @@ type Props = {
   birthdayLabels: string[];
   busyBars: BusyBar[];
   orderedCheckedUserIds: number[];
+  colorUserIds: number[];
   onCellClick?: (date: Date) => void;
 };
 
@@ -27,6 +28,7 @@ export default function DayCell({
   birthdayLabels,
   busyBars,
   orderedCheckedUserIds,
+  colorUserIds,
   onCellClick,
 }: Props) {
   const today = new Date();
@@ -104,7 +106,11 @@ export default function DayCell({
           </Text>
         ))}
         {busyBars.map((bar) => {
-          const color = colorForCheckedUser(bar.ownerId, orderedCheckedUserIds);
+          const color = colorForCheckedUser(
+            bar.ownerId,
+            orderedCheckedUserIds,
+            colorUserIds,
+          );
           if (color === null) return null;
           return (
             <Box

@@ -20,8 +20,8 @@ type Props = {
   error?: string | null;
   onRefresh?: () => void;
   /**
-   * Currently checked user ids in the order they were checked. Position in
-   * the list determines color via {@link colorForCheckedUser}.
+   * Currently checked user ids. Color swatches are assigned from
+   * {@link approvedUsers} display order, not this list.
    */
   orderedCheckedUserIds: number[];
   onChange: (next: number[]) => void;
@@ -33,8 +33,9 @@ type Props = {
 
 /**
  * Vertical, scrollable list of approved users with a checkbox per row. Each
- * checked row gets a colored swatch matching the bar color used in the
- * calendar grid. A "Check all / Check none" toggle sits above the list.
+ * person keeps a stable color from their place in this list; unchecking hides
+ * the swatch without reassigning others. A "Check all / Check none" toggle
+ * sits above the list.
  */
 export default function UserCheckboxList({
   approvedUsers,
@@ -52,13 +53,12 @@ export default function UserCheckboxList({
     approvedUsers.every((u) => orderedCheckedUserIds.includes(u.id));
   const noneChecked = orderedCheckedUserIds.length === 0;
   const indeterminate = !allChecked && !noneChecked;
+  const colorUserIds = approvedUsers.map((u) => u.id);
 
   const handleToggleAll = () => {
     if (allChecked) {
       onChange([]);
     } else {
-      // Preserve any existing order at the front, then append unchecked
-      // users in display order so newly-revealed ids get the next colors.
       const seen = new Set(orderedCheckedUserIds);
       const next = [...orderedCheckedUserIds];
       for (const u of approvedUsers) {
@@ -136,8 +136,8 @@ export default function UserCheckboxList({
           ) : null}
           <SimpleGrid columns={{ base: 2, md: 1 }} gap="1" w="100%">
             {approvedUsers.map((u) => {
-              const color = colorForCheckedUser(u.id, orderedCheckedUserIds);
-              const checked = color !== null;
+              const checked = orderedCheckedUserIds.includes(u.id);
+              const color = colorForCheckedUser(u.id, orderedCheckedUserIds, colorUserIds);
               return (
                 <Checkbox.Root
                   key={u.id}

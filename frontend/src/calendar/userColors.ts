@@ -1,7 +1,8 @@
 /**
  * Color palette used for the user-checkbox calendar filter. Colors are
- * assigned in the order users are checked, cycling once we run past the
- * 10-color palette.
+ * assigned by position in the people list (display order), cycling once we
+ * run past the 10-color palette. Checking or unchecking a person does not
+ * reassign anyone else's color; an unchecked swatch is simply hidden.
  *
  * Each entry is a Chakra-friendly color name plus a fallback CSS string for
  * components that need to set raw CSS (e.g. inline styles or boxShadow).
@@ -63,15 +64,28 @@ export const USER_COLOR_TEXT_ON: Record<UserColorKey, string> = {
 };
 
 /**
- * Resolve a per-user color from the ordered list of currently-checked user
- * ids. Returns `null` when the user is not in the list (so the caller can
- * skip rendering them entirely).
+ * Color assigned to a user from their position in the people list.
+ * Returns `null` when the user is not in the list.
+ */
+export function colorAssignedToUser(
+  userId: number,
+  allUserIdsInDisplayOrder: readonly number[],
+): UserColorKey | null {
+  const idx = allUserIdsInDisplayOrder.indexOf(userId);
+  if (idx < 0) return null;
+  return USER_COLOR_ORDER[idx % USER_COLOR_ORDER.length];
+}
+
+/**
+ * Color to paint for a currently-visible (checked) user. Unchecked users
+ * keep their assignment via {@link colorAssignedToUser} but this returns
+ * `null` so callers skip drawing them.
  */
 export function colorForCheckedUser(
   userId: number,
-  orderedCheckedUserIds: readonly number[],
+  checkedUserIds: readonly number[],
+  allUserIdsInDisplayOrder: readonly number[],
 ): UserColorKey | null {
-  const idx = orderedCheckedUserIds.indexOf(userId);
-  if (idx < 0) return null;
-  return USER_COLOR_ORDER[idx % USER_COLOR_ORDER.length];
+  if (!checkedUserIds.includes(userId)) return null;
+  return colorAssignedToUser(userId, allUserIdsInDisplayOrder);
 }

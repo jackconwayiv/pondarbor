@@ -17,8 +17,10 @@ type Props = {
   anchor: MonthAnchor;
   events: CalendarEvent[];
   birthdays: CalendarBirthdayRow[];
-  /** Currently checked user ids, in the order they were checked. */
+  /** Currently checked user ids. */
   orderedCheckedUserIds: number[];
+  /** People-list order used to assign stable colors. */
+  colorUserIds?: number[];
   /** True when URL implies "all" (missing/users=all). */
   isDefaultAll?: boolean;
   onDayClick?: (date: Date) => void;
@@ -29,6 +31,7 @@ export default function MonthGrid({
   events,
   birthdays,
   orderedCheckedUserIds,
+  colorUserIds = [],
   isDefaultAll,
   onDayClick,
 }: Props) {
@@ -43,6 +46,8 @@ export default function MonthGrid({
     }
     return orderedCheckedUserIds;
   }, [events, isDefaultAll, orderedCheckedUserIds]);
+  const effectiveColorUserIds =
+    colorUserIds.length > 0 ? colorUserIds : effectiveOrderedCheckedUserIds;
 
   const checkedSet = useMemo(
     () => new Set(effectiveOrderedCheckedUserIds),
@@ -143,6 +148,7 @@ export default function MonthGrid({
               birthdayLabels={birthdayLabelsByDay.get(iso) ?? []}
               busyBars={busyBars}
               orderedCheckedUserIds={effectiveOrderedCheckedUserIds}
+              colorUserIds={effectiveColorUserIds}
               onCellClick={onDayClick}
             />
           );

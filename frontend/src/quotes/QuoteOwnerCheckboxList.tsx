@@ -24,7 +24,7 @@ type Props = {
 /**
  * Checkbox list of quote owners (from the current feed), matching the calendar
  * people filter pattern: check all / uncheck all plus per-row checkboxes with
- * color swatches in check order.
+ * color swatches assigned from list order (hidden when unchecked).
  */
 export default function QuoteOwnerCheckboxList({
   owners,
@@ -94,8 +94,12 @@ export default function QuoteOwnerCheckboxList({
       >
         <Stack gap="1">
           {owners.map((o) => {
-            const color = colorForCheckedUser(o.id, orderedCheckedOwnerIds);
-            const checked = color !== null;
+            const checked = orderedCheckedOwnerIds.includes(o.id);
+            const color = colorForCheckedUser(
+              o.id,
+              orderedCheckedOwnerIds,
+              owners.map((row) => row.id),
+            );
             return (
               <Checkbox.Root
                 key={o.id}

@@ -5,6 +5,7 @@ import {
   BOOKS_PAGE_SIZE,
   communityPeople,
   filterBooksByOwners,
+  formatReadLabel,
   paginateBooks,
   sortCommunityBooks,
   viewerShelfError,
@@ -149,14 +150,14 @@ describe("filterBooksByOwners", () => {
 });
 
 describe("sortCommunityBooks", () => {
-  it("sorts by person then title", () => {
+  it("sorts by user then title", () => {
     const rows = [
       { book: book("Emma"), owner: reader(2, "Zoe") },
       { book: book("Dune"), owner: reader(1, "Ada") },
       { book: book("Ada"), owner: reader(2, "Zoe") },
     ];
     expect(
-      sortCommunityBooks(rows, "person").map((r) => `${r.owner.display_name}:${r.book.title}`),
+      sortCommunityBooks(rows, "user").map((r) => `${r.owner.display_name}:${r.book.title}`),
     ).toEqual(["Ada:Dune", "Zoe:Ada", "Zoe:Emma"]);
   });
 
@@ -171,6 +172,30 @@ describe("sortCommunityBooks", () => {
       "Old",
       "No date",
     ]);
+  });
+});
+
+describe("formatReadLabel", () => {
+  it("uses month/year and collapses the same month", () => {
+    expect(
+      formatReadLabel(
+        book("A", {
+          started: "2025-02-03",
+          read: "Thu, 6 Feb 2025 00:00:00 +0000",
+        }),
+      ),
+    ).toBe("Read 02/25");
+  });
+
+  it("shows a month range across different months", () => {
+    expect(
+      formatReadLabel(
+        book("A", {
+          started: "2025-01-15",
+          read: "2025-03-02",
+        }),
+      ),
+    ).toBe("Read 01/25 - 03/25");
   });
 });
 

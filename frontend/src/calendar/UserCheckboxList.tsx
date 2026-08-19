@@ -1,4 +1,4 @@
-import { Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Checkbox, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -134,33 +134,36 @@ export default function UserCheckboxList({
           ) : loading && approvedUsers.length === 0 ? (
             <PanelListRowSkeleton rows={6} />
           ) : null}
-          {approvedUsers.map((u) => {
-            const color = colorForCheckedUser(u.id, orderedCheckedUserIds);
-            const checked = color !== null;
-            return (
-              <Checkbox.Root
-                key={u.id}
-                checked={checked}
-                onCheckedChange={(d: { checked: boolean | "indeterminate" }) =>
-                  handleToggleUser(u.id, Boolean(d.checked))
-                }
-              >
-                <Checkbox.HiddenInput />
-                <Checkbox.Control />
-                <HStack gap="2" align="center" w="100%" minW="0">
-                  <ColorSwatch color={color} />
-                  <Checkbox.Label
-                    fontSize={APP_TEXT_SIZES.helper}
-                    overflow="hidden"
-                    textOverflow="ellipsis"
-                    whiteSpace="nowrap"
-                  >
-                    {u.display_name}
-                  </Checkbox.Label>
-                </HStack>
-              </Checkbox.Root>
-            );
-          })}
+          <SimpleGrid columns={{ base: 2, md: 1 }} gap="1" w="100%">
+            {approvedUsers.map((u) => {
+              const color = colorForCheckedUser(u.id, orderedCheckedUserIds);
+              const checked = color !== null;
+              return (
+                <Checkbox.Root
+                  key={u.id}
+                  checked={checked}
+                  minW="0"
+                  onCheckedChange={(d: { checked: boolean | "indeterminate" }) =>
+                    handleToggleUser(u.id, Boolean(d.checked))
+                  }
+                >
+                  <Checkbox.HiddenInput />
+                  <Checkbox.Control />
+                  <HStack gap="2" align="center" w="100%" minW="0">
+                    <ColorSwatch color={color} />
+                    <Checkbox.Label
+                      fontSize={APP_TEXT_SIZES.helper}
+                      overflow="hidden"
+                      textOverflow="ellipsis"
+                      whiteSpace="nowrap"
+                    >
+                      {u.display_name}
+                    </Checkbox.Label>
+                  </HStack>
+                </Checkbox.Root>
+              );
+            })}
+          </SimpleGrid>
           {!loading && !error && approvedUsers.length === 0 ? (
             <PanelEmptyState
               title="No approved users yet."

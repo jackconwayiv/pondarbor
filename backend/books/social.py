@@ -8,6 +8,8 @@ Uses the same global Profile privacy settings as calendar and other apps:
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from django.contrib.auth import get_user_model
 from django.db.models import Q, QuerySet
 
@@ -19,8 +21,14 @@ from users.views import get_or_create_profile
 
 User = get_user_model()
 
-COMMUNITY_SHELVES = frozenset({"currently-reading", "read", "to-read"})
+COMMUNITY_SHELF_ORDER = (
+    "currently-reading",
+    "to-read",
+    "did-not-finish",
+    "read",
+)
 MAX_COMMUNITY_READERS = 50
+_COMMUNITY_FETCH_WORKERS = 8
 
 
 def _approved_users_qs() -> QuerySet:
@@ -89,42 +97,71 @@ def reader_row(user) -> dict:
     }
 
 
-def community_shelf_payload(
-    viewer,
+def _fetch_community_shelf(
+    goodreads_user_id: str,
+    slug: str,
     *,
-    shelf: str = "currently-reading",
-    use_cache: bool = True,
-) -> dict:
-    slug = (shelf or "currently-reading").strip().lower()
-    if slug not in COMMUNITY_SHELVES:
-        slug = "currently-reading"
+    use_cache: bool,
+) -> tuple[str, list, str | None]:
+    try:
+        books = fetch_shelf_books_cached(
+            goodreads_user_id,
+            slug,
+            use_cache=use_cache,
+        )
+        return slug, books, None
+    except Exception as exc:  # noqa: BLE001 — keep community resilient
+        error = str(getattr(exc, "detail", None) or exc)
+        return slug, [], error
 
+
+def community_payload(viewer, *, use_cache: bool = True) -> dict:
     users = list(visible_books_users_qs(viewer)[:MAX_COMMUNITY_READERS])
+    jobs: list[tuple[object, str, str]] = []
+    for user in users:
+        profile = getattr(user, "profile", None)
+        gr_id = (getattr(profile, "goodreads_user_id", None) or "").strip()
+        if not gr_id:
+            continue
+        for slug in COMMUNITY_SHELF_ORDER:
+            jobs.append((user, gr_id, slug))
+
+    fetched: dict[tuple[int, str], tuple[list, str | None]] = {}
+    if jobs:
+        workers = min(_COMMUNITY_FETCH_WORKERS, len(jobs))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(
+                    _fetch_community_shelf,
+                    gr_id,
+                    slug,
+                    use_cache=use_cache,
+                ): (user, slug)
+                for user, gr_id, slug in jobs
+            }
+            for future in as_completed(futures):
+                user, slug = futures[future]
+                _slug, books, error = future.result()
+                fetched[(user.pk, slug)] = (books, error)
+
     results: list[dict] = []
     for user in users:
         profile = getattr(user, "profile", None)
         gr_id = (getattr(profile, "goodreads_user_id", None) or "").strip()
         if not gr_id:
             continue
-        books: list[dict] = []
-        error: str | None = None
-        try:
-            books = fetch_shelf_books_cached(gr_id, slug, use_cache=use_cache)
-        except Exception as exc:  # noqa: BLE001 — keep community resilient
-            error = str(getattr(exc, "detail", None) or exc)
-            books = []
-        results.append(
-            {
-                "user": reader_row(user),
-                "shelf": slug,
-                "book_count": len(books),
-                "books": books,
-                "error": error,
-            },
-        )
+        shelves = []
+        for slug in COMMUNITY_SHELF_ORDER:
+            books, error = fetched.get((user.pk, slug), ([], None))
+            shelves.append(
+                {
+                    "slug": slug,
+                    "label": shelf_label(slug),
+                    "book_count": len(books),
+                    "books": books,
+                    "error": error,
+                },
+            )
+        results.append({"user": reader_row(user), "shelves": shelves})
 
-    return {
-        "shelf": slug,
-        "shelf_label": shelf_label(slug),
-        "results": results,
-    }
+    return {"results": results}

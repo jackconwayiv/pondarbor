@@ -10,8 +10,7 @@ from books.goodreads import (
     parse_goodreads_user_id,
 )
 from books.social import (
-    COMMUNITY_SHELVES,
-    community_shelf_payload,
+    community_payload,
     reader_row,
     visible_books_users_qs,
 )
@@ -119,30 +118,14 @@ def books_readers(request):
 @permission_classes([IsApprovedUser])
 def books_community(request):
     """
-    Aggregate shelf books for privacy-visible linked readers.
+    Aggregate the four community shelves for privacy-visible linked readers.
 
     Query params:
-    - shelf: currently-reading | read | to-read (default currently-reading)
     - refresh: force bypass Goodreads cache
     """
-    shelf = (request.query_params.get("shelf") or "currently-reading").strip().lower()
-    if shelf not in COMMUNITY_SHELVES:
-        return Response(
-            {
-                "detail": (
-                    "Invalid shelf. Use currently-reading, read, or to-read."
-                ),
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
     refresh = str(request.query_params.get("refresh", "")).lower() in (
         "1",
         "true",
         "yes",
     )
-    payload = community_shelf_payload(
-        request.user,
-        shelf=shelf,
-        use_cache=not refresh,
-    )
-    return Response(payload)
+    return Response(community_payload(request.user, use_cache=not refresh))

@@ -4,7 +4,6 @@ import type {
   BooksLinkResponse,
   BooksShelvesResponse,
   BooksStatusResponse,
-  CommunityShelfSlug,
 } from "./types";
 
 function apiBase(): string {
@@ -106,13 +105,8 @@ export async function unlinkGoodreadsProfile(
 
 export async function fetchBooksCommunity(
   accessToken: string | null,
-  opts?: { shelf?: CommunityShelfSlug; refresh?: boolean },
 ): Promise<BooksCommunityResponse> {
-  const params = new URLSearchParams();
-  if (opts?.shelf) params.set("shelf", opts.shelf);
-  if (opts?.refresh) params.set("refresh", "1");
-  const q = params.toString() ? `?${params.toString()}` : "";
-  const response = await fetch(`${apiBase()}/api/v1/books/community/${q}`, {
+  const response = await fetch(`${apiBase()}/api/v1/books/community/`, {
     method: "GET",
     headers: authHeaders(accessToken),
     credentials: "omit",

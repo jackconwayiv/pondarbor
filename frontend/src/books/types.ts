@@ -48,18 +48,25 @@ export type BooksReader = {
   profile_url: string | null;
 };
 
-export type BooksCommunityEntry = {
-  user: BooksReader;
-  shelf: string;
+export type CommunityShelfSlug =
+  | "currently-reading"
+  | "to-read"
+  | "did-not-finish"
+  | "read";
+
+export type BooksCommunityShelf = {
+  slug: CommunityShelfSlug | string;
+  label: string;
   book_count: number;
   books: GoodreadsBook[];
   error: string | null;
 };
 
-export type BooksCommunityResponse = {
-  shelf: string;
-  shelf_label: string;
-  results: BooksCommunityEntry[];
+export type BooksCommunityEntry = {
+  user: BooksReader;
+  shelves: BooksCommunityShelf[];
 };
 
-export type CommunityShelfSlug = "currently-reading" | "read" | "to-read";
+export type BooksCommunityResponse = {
+  results: BooksCommunityEntry[];
+};

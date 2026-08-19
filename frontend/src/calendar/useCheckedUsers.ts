@@ -1,9 +1,9 @@
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router";
 
-import type { CalendarOwnerRow } from "./types";
-
 const PARAM = "users";
+
+export type CheckedUserRow = { id: number };
 
 /**
  * Encode `orderedCheckedUserIds` into the `?users=` query param so the filter
@@ -15,7 +15,7 @@ const PARAM = "users";
  *   - `users=1,3,2` → those user ids are checked, in that order (the order
  *     determines the per-user color).
  */
-export function useCheckedUsers(approvedUsers: CalendarOwnerRow[]) {
+export function useCheckedUsers(approvedUsers: readonly CheckedUserRow[]) {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get(PARAM);
 
@@ -72,7 +72,7 @@ export function useCheckedUsers(approvedUsers: CalendarOwnerRow[]) {
 /** Build a `?users=...` suffix for cross-route links. */
 export function buildUsersQueryFragment(
   orderedCheckedUserIds: number[],
-  approvedUsers: CalendarOwnerRow[],
+  approvedUsers: readonly CheckedUserRow[],
 ): string {
   const approvedIds = approvedUsers.map((u) => u.id);
   const isAll =

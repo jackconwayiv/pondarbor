@@ -1,6 +1,7 @@
 import {
   Avatar,
   Box,
+  Collapsible,
   Heading,
   HStack,
   Image,
@@ -11,12 +12,14 @@ import {
   Tabs,
   Text,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useState } from "react";
-import { Link as RouterLink } from "react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAppSession, type SessionUser } from "../auth/AppSessionContext";
+import UserCheckboxList from "../calendar/UserCheckboxList";
+import { useCheckedUsers } from "../calendar/useCheckedUsers";
 import PondButton from "../PondButton";
 import { AppModal } from "../components/AppModal";
+import PondNativeSelect from "../components/PondNativeSelect";
 import {
   PanelEmptyState,
   PanelErrorState,
@@ -25,8 +28,11 @@ import {
   SessionLoadingCard,
 } from "../components/panelStatus";
 import FriendProfileLink from "../friend/FriendProfileLink";
-import { friendProfilePath } from "../friend/profilePaths";
-import { APP_PANEL_PAGE_MIN_HEIGHT_PROPS, fullBleedStackProps } from "../responsive";
+import {
+  APP_PANEL_PAGE_MIN_HEIGHT_PROPS,
+  fullBleedStackProps,
+  useIsMobile,
+} from "../responsive";
 import {
   APP_SHELL_TAB_LIST_PROPS,
   APP_SHELL_TAB_TRIGGER_PROPS,
@@ -38,24 +44,29 @@ import {
   MAPPED_LIST_STACK_GAP,
   PANEL_ENTRY_CARD_PROPS,
   PANEL_FIELD_PROPS,
-  PANEL_NESTED_BLOCK_PROPS,
 } from "../theme/typography";
 import {
   fetchBooksCommunity,
   linkGoodreadsProfile,
   unlinkGoodreadsProfile,
 } from "./api";
+import {
+  blendedBooksForShelf,
+  BOOKS_PAGE_SIZE,
+  booksPageCount,
+  communityPeople,
+  COMMUNITY_SHELF_OPTIONS,
+  formatBookDateMdY,
+  paginateBooks,
+  type BooksListSort,
+  viewerShelfError,
+  visibleCommunityBooks,
+} from "./communityView";
 import type {
   BooksCommunityEntry,
   CommunityShelfSlug,
   GoodreadsBook,
 } from "./types";
-
-const COMMUNITY_SHELF_OPTIONS: { value: CommunityShelfSlug; label: string }[] = [
-  { value: "currently-reading", label: "Currently Reading" },
-  { value: "read", label: "Read" },
-  { value: "to-read", label: "Want to Read" },
-];
 
 const MAPPED_CARD_PROPS = {
   bg: "bg.panel",
@@ -73,52 +84,6 @@ const BOOK_CARD_GRID_PROPS = {
   w: "100%",
   alignItems: "start",
 } as const;
-
-function shelfLabelFromSlug(slug: string): string {
-  const known = COMMUNITY_SHELF_OPTIONS.find((opt) => opt.value === slug);
-  if (known) return known.label;
-  return slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-const MONTH_ABBR_TO_NUM: Record<string, string> = {
-  jan: "01",
-  feb: "02",
-  mar: "03",
-  apr: "04",
-  may: "05",
-  jun: "06",
-  jul: "07",
-  aug: "08",
-  sep: "09",
-  oct: "10",
-  nov: "11",
-  dec: "12",
-};
-
-function pad2(value: number | string): string {
-  return String(value).padStart(2, "0");
-}
-
-/** Calendar date only (no time/zone). Returns sortable key + MM/DD/YY label. */
-function formatBookDateMdY(raw: string | undefined): { key: string; label: string } | null {
-  const s = (raw ?? "").trim();
-  if (!s) return null;
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-  if (iso) {
-    const [, year, month, day] = iso;
-    return { key: `${year}-${month}-${day}`, label: `${month}/${day}/${year.slice(-2)}` };
-  }
-  const rfc =
-    /(?:\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+)?(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})/i.exec(
-      s,
-    );
-  if (!rfc) return null;
-  const day = pad2(rfc[1]);
-  const month = MONTH_ABBR_TO_NUM[rfc[2].slice(0, 3).toLowerCase()];
-  const year = rfc[3];
-  if (!month) return null;
-  return { key: `${year}-${month}-${day}`, label: `${month}/${day}/${year.slice(-2)}` };
-}
 
 function formatReadLabel(book: GoodreadsBook): string | null {
   const finish = formatBookDateMdY(book.user_read_at);
@@ -140,18 +105,14 @@ function stars(rating: number): string {
 
 function BookRow({
   book,
-  nested = false,
   ownerName,
   ownerUserId,
   ownerAvatarUrl,
-  shelfLabel,
 }: {
   book: GoodreadsBook;
-  nested?: boolean;
   ownerName: string;
   ownerUserId?: number;
   ownerAvatarUrl?: string;
-  shelfLabel: string;
 }) {
   const cover = (book.book_large_image_url || book.book_image_url).trim();
   const rating = stars(book.user_rating);
@@ -179,134 +140,39 @@ function BookRow({
         {ownerAvatar}
       </Box>
     );
-  const row = (
-    <HStack align="start" gap="2" w="100%">
-      {cover ? (
-        <Image
-          src={cover}
-          alt=""
-          w="56px"
-          h="84px"
-          objectFit="cover"
-          borderRadius="md"
-          flexShrink={0}
-        />
-      ) : (
-        <Box w="56px" h="84px" bg="bg.muted" borderRadius="md" flexShrink={0} />
-      )}
-      <Stack gap="1" minW={0} flex="1">
-        <HStack align="start" justify="space-between" gap="2" w="100%">
-          <Text fontWeight="semibold" lineClamp={2} minW={0} flex="1">
-            {title}
-          </Text>
-          {ownerBlock}
-        </HStack>
-        <HStack align="start" justify="space-between" gap="2" w="100%">
-          <Text
-            color="fg.muted"
-            fontSize={APP_TEXT_SIZES.helper}
-            lineClamp={1}
-            minW={0}
-            flex="1"
-          >
-            {book.author_name || "\u00a0"}
-          </Text>
-          <Text
-            color="fg.muted"
-            fontSize={APP_TEXT_SIZES.helper}
-            fontStyle="italic"
-            lineClamp={1}
-            flexShrink={0}
-            textAlign="right"
-            maxW="48%"
-          >
-            {shelfLabel}
-          </Text>
-        </HStack>
-        <HStack gap="2" flexWrap="wrap" color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
-          {rating ? <Text aria-label={`${book.user_rating} stars`}>{rating}</Text> : null}
-          {readLabel ? <Text>{readLabel}</Text> : null}
-          {book.book_published ? <Text>{book.book_published}</Text> : null}
-        </HStack>
-      </Stack>
-    </HStack>
-  );
-  if (nested) {
-    return (
-      <Box w="100%" minW={0} {...PANEL_NESTED_BLOCK_PROPS}>
-        {row}
-      </Box>
-    );
-  }
-  return <Box {...MAPPED_CARD_PROPS}>{row}</Box>;
-}
-
-function CommunityReaderCard({ entry }: { entry: BooksCommunityEntry }) {
   return (
     <Box {...MAPPED_CARD_PROPS}>
-      <Stack gap="2">
-        <HStack gap="2" justify="space-between" flexWrap="wrap">
-          <HStack gap="2" minW={0}>
-            <FriendProfileLink userId={entry.user.id}>
-              <Avatar.Root size="sm">
-                {entry.user.avatar_url ? (
-                  <Avatar.Image src={entry.user.avatar_url} alt="" />
-                ) : null}
-                <Avatar.Fallback name={entry.user.display_name} />
-              </Avatar.Root>
-            </FriendProfileLink>
-            <Stack gap="0" minW={0}>
-              <Text fontWeight="semibold" asChild>
-                <RouterLink to={friendProfilePath(entry.user.id)}>
-                  {entry.user.display_name}
-                </RouterLink>
-              </Text>
-              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                {entry.book_count
-                  ? `${entry.book_count} book${entry.book_count === 1 ? "" : "s"}`
-                  : "No books on this shelf"}
-              </Text>
-            </Stack>
+      <HStack align="start" gap="2" w="100%">
+        {cover ? (
+          <Image
+            src={cover}
+            alt=""
+            w="56px"
+            h="84px"
+            objectFit="cover"
+            borderRadius="md"
+            flexShrink={0}
+          />
+        ) : (
+          <Box w="56px" h="84px" bg="bg.muted" borderRadius="md" flexShrink={0} />
+        )}
+        <Stack gap="1" minW={0} flex="1">
+          <HStack align="start" justify="space-between" gap="2" w="100%">
+            <Text fontWeight="semibold" lineClamp={2} minW={0} flex="1">
+              {title}
+            </Text>
+            {ownerBlock}
           </HStack>
-          {entry.user.profile_url ? (
-            <Link
-              href={entry.user.profile_url}
-              target="_blank"
-              rel="noreferrer"
-              fontSize={APP_TEXT_SIZES.helper}
-            >
-              Goodreads
-            </Link>
-          ) : null}
-        </HStack>
-        {entry.error ? (
-          <Text color="nautical.solid" fontSize={APP_TEXT_SIZES.helper} fontWeight="medium" role="alert">
-            Could not load this shelf right now.
+          <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper} lineClamp={1}>
+            {book.author_name || "\u00a0"}
           </Text>
-        ) : null}
-        {entry.books.length ? (
-          <Stack gap={MAPPED_LIST_STACK_GAP}>
-            <SimpleGrid {...BOOK_CARD_GRID_PROPS}>
-              {entry.books.slice(0, 8).map((book) => (
-                <BookRow
-                  key={`${entry.user.id}-${book.book_id || book.title}-${book.link}`}
-                  book={book}
-                  nested
-                  ownerName={entry.user.display_name}
-                  ownerUserId={entry.user.id}
-                  ownerAvatarUrl={entry.user.avatar_url}
-                  shelfLabel={shelfLabelFromSlug(entry.shelf)}
-                />
-              ))}
-            </SimpleGrid>
-            {entry.books.length > 8 ? (
-              <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
-                +{entry.books.length - 8} more
-              </Text>
-            ) : null}
-          </Stack>
-        ) : null}
-      </Stack>
+          <HStack gap="2" flexWrap="wrap" color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
+            {rating ? <Text aria-label={`${book.user_rating} stars`}>{rating}</Text> : null}
+            {readLabel ? <Text>{readLabel}</Text> : null}
+            {book.book_published ? <Text>{book.book_published}</Text> : null}
+          </HStack>
+        </Stack>
+      </HStack>
     </Box>
   );
 }
@@ -322,7 +188,9 @@ export default function BooksPage() {
   } = useAppSession();
 
   const isApproved = Boolean(sessionUser?.user.is_approved);
+  const viewerUserId = sessionUser?.user.id;
   const savedId = (sessionUser?.profile.goodreads_user_id ?? "").trim();
+  const isMobile = useIsMobile();
 
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [profileUrl, setProfileUrl] = useState(
@@ -337,6 +205,22 @@ export default function BooksPage() {
   const [communityBusy, setCommunityBusy] = useState(false);
   const [communityError, setCommunityError] = useState<string | null>(null);
   const [communityLoaded, setCommunityLoaded] = useState(false);
+  const [listPage, setListPage] = useState(1);
+  const [listSort, setListSort] = useState<BooksListSort>("title");
+  const [peopleOpen, setPeopleOpen] = useState(false);
+
+  const people = useMemo(() => communityPeople(communityEntries), [communityEntries]);
+  const peopleForFilter = useMemo(
+    () =>
+      people.map((user) => ({
+        id: user.id,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+      })),
+    [people],
+  );
+  const { orderedCheckedUserIds, setCheckedUserIds } = useCheckedUsers(peopleForFilter);
+  const checkedKey = orderedCheckedUserIds.join(",");
 
   const applySession = useCallback(
     (session: SessionUser | undefined) => {
@@ -348,19 +232,12 @@ export default function BooksPage() {
     [updateProfileLocally],
   );
 
-  const loadCommunity = useCallback(
-    async (opts?: { shelf?: CommunityShelfSlug; refresh?: boolean }) => {
-      const token = await getApiAccessToken();
-      const shelf = opts?.shelf ?? communityShelf;
-      const data = await fetchBooksCommunity(token, {
-        shelf,
-        refresh: opts?.refresh,
-      });
-      setCommunityEntries(data.results);
-      setCommunityLoaded(true);
-    },
-    [communityShelf, getApiAccessToken],
-  );
+  const loadCommunity = useCallback(async () => {
+    const token = await getApiAccessToken();
+    const data = await fetchBooksCommunity(token);
+    setCommunityEntries(data.results);
+    setCommunityLoaded(true);
+  }, [getApiAccessToken]);
 
   useEffect(() => {
     if (isLoading || sessionError || !isApproved || communityLoaded) return;
@@ -385,6 +262,36 @@ export default function BooksPage() {
       cancelled = true;
     };
   }, [isLoading, sessionError, isApproved, communityLoaded, loadCommunity]);
+
+  const unfilteredRows = useMemo(
+    () => blendedBooksForShelf(communityEntries, communityShelf),
+    [communityEntries, communityShelf],
+  );
+  const visibleRows = useMemo(
+    () =>
+      visibleCommunityBooks(
+        communityEntries,
+        communityShelf,
+        orderedCheckedUserIds,
+        listSort,
+      ),
+    [communityEntries, communityShelf, orderedCheckedUserIds, listSort],
+  );
+  const ownShelfError = useMemo(
+    () => viewerShelfError(communityEntries, communityShelf, viewerUserId),
+    [communityEntries, communityShelf, viewerUserId],
+  );
+  const totalPages = booksPageCount(visibleRows.length);
+  const safePage = Math.min(Math.max(1, listPage), totalPages);
+  const pageRows = useMemo(
+    () => paginateBooks(visibleRows, safePage),
+    [visibleRows, safePage],
+  );
+  const showPager = visibleRows.length > BOOKS_PAGE_SIZE;
+
+  useEffect(() => {
+    setListPage(1);
+  }, [communityShelf, listSort, checkedKey]);
 
   const openLinkModal = () => {
     setLinkError(null);
@@ -428,29 +335,14 @@ export default function BooksPage() {
     }
   };
 
-  const onChangeCommunityShelf = async (shelf: CommunityShelfSlug) => {
-    setCommunityShelf(shelf);
+  const onRetryCommunity = async () => {
     setCommunityBusy(true);
     setCommunityError(null);
     try {
-      await loadCommunity({ shelf });
+      await loadCommunity();
     } catch (e) {
       setCommunityError(
         e instanceof Error ? e.message : "Could not load community reading.",
-      );
-    } finally {
-      setCommunityBusy(false);
-    }
-  };
-
-  const onRefreshCommunity = async () => {
-    setCommunityBusy(true);
-    setCommunityError(null);
-    try {
-      await loadCommunity({ refresh: true });
-    } catch (e) {
-      setCommunityError(
-        e instanceof Error ? e.message : "Could not refresh community reading.",
       );
     } finally {
       setCommunityBusy(false);
@@ -511,9 +403,10 @@ export default function BooksPage() {
           <Tabs.Root
             value={communityShelf}
             variant="plain"
-            onValueChange={(details) =>
-              void onChangeCommunityShelf(details.value as CommunityShelfSlug)
-            }
+            onValueChange={(details) => {
+              setCommunityShelf(details.value as CommunityShelfSlug);
+              setListPage(1);
+            }}
           >
             <HStack {...APP_SHELL_TAB_LIST_PROPS} justify="space-between" align="center">
               <Tabs.List
@@ -532,26 +425,14 @@ export default function BooksPage() {
                   </Tabs.Trigger>
                 ))}
               </Tabs.List>
-              <HStack gap="2" flexShrink={0} flexWrap="wrap">
-                <PondButton
-                  size="sm"
-                  colorPalette={savedId ? "sky" : "lilypad"}
-                  variant={savedId ? "outline" : "solid"}
-                  onClick={openLinkModal}
-                >
-                  {linkButtonLabel}
-                </PondButton>
-                <PondButton
-                  size="sm"
-                  colorPalette="sky"
-                  variant="outline"
-                  onClick={() => void onRefreshCommunity()}
-                  loading={communityBusy}
-                  disabled={communityBusy || !isApproved}
-                >
-                  Refresh
-                </PondButton>
-              </HStack>
+              <PondButton
+                size="sm"
+                colorPalette={savedId ? "sky" : "lilypad"}
+                variant={savedId ? "outline" : "solid"}
+                onClick={openLinkModal}
+              >
+                {linkButtonLabel}
+              </PondButton>
             </HStack>
           </Tabs.Root>
 
@@ -568,8 +449,18 @@ export default function BooksPage() {
                     title="Could not load community reading."
                     description={communityError}
                     actionLabel="Retry"
-                    onAction={() => void onRefreshCommunity()}
+                    onAction={() => void onRetryCommunity()}
                   />
+                ) : null}
+                {ownShelfError ? (
+                  <Text
+                    color="nautical.solid"
+                    fontSize={APP_TEXT_SIZES.helper}
+                    fontWeight="medium"
+                    role="alert"
+                  >
+                    Could not load your shelf right now.
+                  </Text>
                 ) : null}
                 {communityBusy && !communityEntries.length ? (
                   <Box {...PANEL_ENTRY_CARD_PROPS}>
@@ -587,11 +478,137 @@ export default function BooksPage() {
                     onAction={openLinkModal}
                   />
                 ) : null}
-                <Stack gap={MAPPED_LIST_STACK_GAP}>
-                  {communityEntries.map((entry) => (
-                    <CommunityReaderCard key={entry.user.id} entry={entry} />
-                  ))}
-                </Stack>
+                {communityEntries.length > 0 ? (
+                  <Stack
+                    direction={isMobile ? "column" : "row"}
+                    gap="2"
+                    align="stretch"
+                  >
+                    {isMobile ? (
+                      <Collapsible.Root
+                        open={peopleOpen}
+                        onOpenChange={(details) => setPeopleOpen(details.open)}
+                      >
+                        <Stack gap="2">
+                          <Collapsible.Trigger asChild>
+                            <PondButton
+                              size="sm"
+                              uiClass="filter"
+                              uiActive={peopleOpen}
+                              justifyContent="center"
+                            >
+                              Filter People
+                            </PondButton>
+                          </Collapsible.Trigger>
+                          <Collapsible.Content>
+                            <UserCheckboxList
+                              approvedUsers={peopleForFilter}
+                              loading={communityBusy && !communityEntries.length}
+                              orderedCheckedUserIds={orderedCheckedUserIds}
+                              onChange={setCheckedUserIds}
+                            />
+                          </Collapsible.Content>
+                        </Stack>
+                      </Collapsible.Root>
+                    ) : (
+                      <UserCheckboxList
+                        approvedUsers={peopleForFilter}
+                        loading={communityBusy && !communityEntries.length}
+                        orderedCheckedUserIds={orderedCheckedUserIds}
+                        onChange={setCheckedUserIds}
+                      />
+                    )}
+                    <Box flex="1" minW="0">
+                      <Stack gap="2">
+                        <HStack justify="flex-end" align="center" gap="2">
+                          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                            Sort
+                          </Text>
+                          <PondNativeSelect
+                            rootProps={{ size: "sm", w: "auto", minW: "8.5rem" }}
+                            fieldProps={{
+                              value: listSort,
+                              "aria-label": "Sort books",
+                              onChange: (e) =>
+                                setListSort(e.target.value as BooksListSort),
+                            }}
+                          >
+                            <option value="title">Title</option>
+                            <option value="person">Person</option>
+                            <option value="date">Date</option>
+                          </PondNativeSelect>
+                        </HStack>
+                        {!communityBusy &&
+                        communityLoaded &&
+                        unfilteredRows.length === 0 &&
+                        !communityError ? (
+                          <PanelEmptyState
+                            title="No books on this shelf yet."
+                            description="Link Goodreads if you have not, or pick another shelf."
+                          />
+                        ) : null}
+                        {!communityBusy &&
+                        communityLoaded &&
+                        unfilteredRows.length > 0 &&
+                        visibleRows.length === 0 &&
+                        !communityError ? (
+                          <PanelEmptyState
+                            title="No books match this filter."
+                            description="Open Filter People and include at least one person, or use Check all."
+                            actionLabel={isMobile ? "Open Filter People" : undefined}
+                            onAction={
+                              isMobile ? () => setPeopleOpen(true) : undefined
+                            }
+                          />
+                        ) : null}
+                        {pageRows.length ? (
+                          <Stack gap={MAPPED_LIST_STACK_GAP}>
+                            <SimpleGrid {...BOOK_CARD_GRID_PROPS}>
+                              {pageRows.map((row) => (
+                                <BookRow
+                                  key={`${row.owner.id}-${row.book.book_id || row.book.title}-${row.book.link}`}
+                                  book={row.book}
+                                  ownerName={row.owner.display_name}
+                                  ownerUserId={row.owner.id}
+                                  ownerAvatarUrl={row.owner.avatar_url}
+                                />
+                              ))}
+                            </SimpleGrid>
+                            {showPager ? (
+                              <HStack justify="space-between">
+                                <Text fontSize={APP_TEXT_SIZES.helper}>
+                                  Page {safePage} / {totalPages}
+                                </Text>
+                                <HStack>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="sky"
+                                    disabled={safePage <= 1}
+                                    onClick={() =>
+                                      setListPage((p) => Math.max(1, p - 1))
+                                    }
+                                  >
+                                    ←
+                                  </PondButton>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="sky"
+                                    disabled={safePage >= totalPages}
+                                    onClick={() =>
+                                      setListPage((p) => Math.min(totalPages, p + 1))
+                                    }
+                                  >
+                                    →
+                                  </PondButton>
+                                </HStack>
+                              </HStack>
+                            ) : null}
+                          </Stack>
+                        ) : null}
+                      </Stack>
+                    </Box>
+                  </Stack>
+                ) : null}
               </Stack>
             )}
           </Box>
@@ -605,10 +622,24 @@ export default function BooksPage() {
           setLinkModalOpen(open);
         }}
         title={linkButtonLabel}
-        description="Paste your public Goodreads profile URL. Keep updating books on Goodreads after you link."
+        description="Paste your public Goodreads profile URL. Keep adding books on Goodreads after you link."
         size="md"
       >
         <Stack gap="2">
+          <Stack gap="1">
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              1. On Goodreads, open your profile (your name or photo in the header — not
+              My Books).
+            </Text>
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              2. Copy the address bar. It should look like goodreads.com/user/show/ plus
+              your id (a name after the id is fine).
+            </Text>
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              3. Under Account settings → Privacy, allow anyone to view your profile and
+              bookshelves. Private profiles cannot load here.
+            </Text>
+          </Stack>
           <Input
             value={profileUrl}
             onChange={(e) => setProfileUrl(e.target.value)}

@@ -257,20 +257,23 @@ class BooksSocialPrivacyTests(TestCase):
         self.assertNotIn(self.carol.id, ids)
 
     @mock.patch("books.social.fetch_shelf_books_cached")
-    def test_community_returns_books_for_visible_readers(self, fetch_mock):
+    def test_community_returns_all_shelves_for_visible_readers(self, fetch_mock):
         fetch_mock.return_value = [
             {"title": "Joe Country", "author_name": "Mick Herron", "book_id": "1"},
         ]
-        resp = self.alice_client.get("/api/v1/books/community/?shelf=currently-reading")
+        resp = self.alice_client.get("/api/v1/books/community/")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data["shelf"], "currently-reading")
         self.assertEqual(len(resp.data["results"]), 3)
-        self.assertEqual(resp.data["results"][0]["books"][0]["title"], "Joe Country")
-        self.assertEqual(fetch_mock.call_count, 3)
-
-    def test_community_rejects_invalid_shelf(self):
-        resp = self.alice_client.get("/api/v1/books/community/?shelf=custom-shelf")
-        self.assertEqual(resp.status_code, 400)
+        slugs = [row["slug"] for row in resp.data["results"][0]["shelves"]]
+        self.assertEqual(
+            slugs,
+            ["currently-reading", "to-read", "did-not-finish", "read"],
+        )
+        self.assertEqual(
+            resp.data["results"][0]["shelves"][0]["books"][0]["title"],
+            "Joe Country",
+        )
+        self.assertEqual(fetch_mock.call_count, 12)
 
     def test_pending_user_cannot_access_community(self):
         pending = User.objects.create_user(

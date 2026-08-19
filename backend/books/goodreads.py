@@ -25,11 +25,12 @@ REQUEST_TIMEOUT_SEC = 15
 MAX_RESPONSE_BYTES = 3 * 1024 * 1024
 CACHE_TTL_SEC = 300
 
-STANDARD_SHELVES = ("currently-reading", "read", "to-read")
+STANDARD_SHELVES = ("currently-reading", "read", "to-read", "did-not-finish")
 SHELF_LABELS = {
     "currently-reading": "Currently Reading",
     "read": "Read",
     "to-read": "Want to Read",
+    "did-not-finish": "Did Not Finish",
 }
 
 _RE_USER_SHOW = re.compile(

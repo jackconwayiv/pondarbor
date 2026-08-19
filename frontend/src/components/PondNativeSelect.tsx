@@ -1,5 +1,6 @@
 import {
   NativeSelectField,
+  NativeSelectIndicator,
   NativeSelectRoot,
   type NativeSelectFieldProps,
   type NativeSelectRootProps,
@@ -20,6 +21,7 @@ export default function PondNativeSelect({ rootProps, fieldProps, children }: Po
       <NativeSelectField {...PANEL_SELECT_PROPS} {...fieldProps}>
         {children}
       </NativeSelectField>
+      <NativeSelectIndicator />
     </NativeSelectRoot>
   );
 }

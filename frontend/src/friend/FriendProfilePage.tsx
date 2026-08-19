@@ -9,7 +9,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link as RouterLink, Navigate, useParams } from "react-router";
+import { Link as RouterLink, Navigate, useNavigate, useParams } from "react-router";
 import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
 import {
   fetchPublicAchievementsByUser,
@@ -142,6 +142,7 @@ function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
 
 export default function FriendProfilePage() {
   const { userId, email } = useParams<{ userId?: string; email?: string }>();
+  const navigate = useNavigate();
   const {
     isAuthenticated,
     isLoading: sessionLoading,
@@ -403,6 +404,7 @@ export default function FriendProfilePage() {
     canViewFullProfile,
     peopleCount: summary?.people_count,
   });
+  const hasReadingTab = Boolean(summary?.has_goodreads);
   const friendshipStatus = summary?.friendship_status ?? "none";
   const canManageFriendshipById = lookup.kind === "id";
   const leftmostVisibleTab = useMemo<
@@ -992,7 +994,13 @@ export default function FriendProfilePage() {
                 flex="1"
                 minH="0"
                 w="100%"
-                onValueChange={(details) =>
+                onValueChange={(details) => {
+                  if (details.value === "reading") {
+                    if (profileSubjectUserId != null) {
+                      navigate(`/books?users=${profileSubjectUserId}`);
+                    }
+                    return;
+                  }
                   setProfileTab(
                     details.value as
                       | "friends"
@@ -1001,8 +1009,8 @@ export default function FriendProfilePage() {
                       | "closet"
                       | "recommendations"
                       | "people",
-                  )
-                }
+                  );
+                }}
                 variant="plain"
               >
                 <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
@@ -1020,6 +1028,14 @@ export default function FriendProfilePage() {
                   >
                     Friends
                   </Tabs.Trigger>
+                  {hasReadingTab ? (
+                    <Tabs.Trigger
+                      value="reading"
+                      {...APP_SHELL_TAB_TRIGGER_PROPS}
+                    >
+                      Reading
+                    </Tabs.Trigger>
+                  ) : null}
                   {hasFamilyTreeTab ? (
                     <Tabs.Trigger
                       value="people"

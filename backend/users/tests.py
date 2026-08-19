@@ -91,6 +91,23 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["display_name"], "TargetNick")
         self.assertEqual(body["email"], "target@example.com")
         self.assertEqual(body["closet_items_count"], 0)
+        self.assertFalse(body["has_goodreads"])
+
+    def test_public_summary_has_goodreads_when_linked_and_visible(self):
+        viewer = User.objects.create_user(email="grv@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="grt@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        target.profile.goodreads_user_id = "152185079"
+        target.profile.save(update_fields=["goodreads_user_id"])
+        FriendRequest.objects.create(requester=viewer, requested=target, is_accepted=True)
+        FriendRequest.objects.create(requester=target, requested=viewer, is_accepted=True)
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/public/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["has_goodreads"])
 
     def test_public_summary_friend_includes_birth_and_big_three(self):
         from datetime import date

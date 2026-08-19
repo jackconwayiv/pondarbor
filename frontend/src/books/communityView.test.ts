@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bookWorkKey,
   blendedBooksForShelf,
   BOOKS_PAGE_SIZE,
   BOOKS_PAGE_SIZE_DESKTOP,
   communityPeople,
   filterBooksByOwners,
   formatReadLabel,
+  matchSectionsForViewer,
   paginateBooks,
   sortCommunityBooks,
   viewerShelfError,
+  visibleWorksForShelf,
 } from "./communityView";
 import type { BooksCommunityEntry, BooksReader, GoodreadsBook } from "./types";
 
@@ -219,5 +222,102 @@ describe("communityPeople", () => {
       { user: reader(1, "Ada"), shelves: emptyShelves({}) },
     ];
     expect(communityPeople(results).map((u) => u.display_name)).toEqual(["Ada", "Zoe"]);
+  });
+});
+
+describe("bookWorkKey", () => {
+  it("prefers book_id then isbn then title and author", () => {
+    expect(bookWorkKey(book("Dune"))).toBe("id:Dune");
+    expect(
+      bookWorkKey({
+        ...book("Dune"),
+        book_id: "",
+        isbn: "9780441013593",
+      }),
+    ).toBe("isbn:9780441013593");
+    expect(
+      bookWorkKey({
+        ...book("Dune"),
+        book_id: "",
+        isbn: "",
+      }),
+    ).toBe("ta:dune|author");
+  });
+});
+
+describe("visibleWorksForShelf", () => {
+  it("collapses two people on the same shelf into one row", () => {
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(2, "Zoe"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune"), book("Emma")] },
+        }),
+      },
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune")] },
+        }),
+      },
+    ];
+    const rows = visibleWorksForShelf(results, "currently-reading", [1, 2], "title");
+    expect(rows.map((r) => `${r.book.title}:${r.collapsed}:${r.groupReaders.length}`)).toEqual([
+      "Dune:true:2",
+      "Emma:false:1",
+    ]);
+  });
+
+  it("still lists a work on every shelf it appears on", () => {
+    const dune = book("Dune");
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [dune] },
+        }),
+      },
+      {
+        user: reader(2, "Bob"),
+        shelves: emptyShelves({
+          read: { books: [book("Dune")] },
+        }),
+      },
+    ];
+    const reading = visibleWorksForShelf(results, "currently-reading", [1, 2], "title");
+    const finished = visibleWorksForShelf(results, "read", [1, 2], "title");
+    expect(reading).toHaveLength(1);
+    expect(finished).toHaveLength(1);
+    expect(reading[0]?.collapsed).toBe(false);
+    expect(reading[0]?.groupReaders.map((r) => r.display_name)).toEqual(["Ada", "Bob"]);
+    expect(finished[0]?.groupReaders.map((r) => r.display_name)).toEqual(["Ada", "Bob"]);
+  });
+});
+
+describe("matchSectionsForViewer", () => {
+  it("groups same-shelf overlaps and viewer cross-status", () => {
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune")] },
+          read: { books: [book("Emma")] },
+        }),
+      },
+      {
+        user: reader(2, "Zoe"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune")] },
+          "to-read": { books: [book("Emma")] },
+        }),
+      },
+    ];
+    const sections = matchSectionsForViewer(results, [1, 2], 1, "title");
+    expect(sections.map((s) => s.id)).toEqual([
+      "same-currently-reading",
+      "you-finished-they-want",
+    ]);
+    expect(sections[0]?.rows.map((r) => r.book.title)).toEqual(["Dune"]);
+    expect(sections[1]?.rows.map((r) => r.book.title)).toEqual(["Emma"]);
   });
 });

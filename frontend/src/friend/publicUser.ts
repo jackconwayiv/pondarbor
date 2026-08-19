@@ -18,6 +18,8 @@ export type PublicUserSummary = {
   recommendations_count?: number;
   /** Active family tree members including self (when viewer may see full profile). */
   people_count?: number;
+  /** Visible in Books community for this viewer (linked Goodreads + privacy). */
+  has_goodreads?: boolean;
   /** ISO date; only when viewer may see full profile and friend set a birthday. */
   birth_date?: string;
   sun_sign?: string;

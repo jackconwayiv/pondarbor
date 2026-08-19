@@ -1,5 +1,4 @@
 import {
-  Avatar,
   Box,
   Collapsible,
   Heading,
@@ -28,7 +27,6 @@ import {
   PanelSessionReconnect,
   SessionLoadingCard,
 } from "../components/panelStatus";
-import FriendProfileLink from "../friend/FriendProfileLink";
 import {
   APP_PANEL_PAGE_MIN_HEIGHT_PROPS,
   fullBleedStackProps,
@@ -54,20 +52,21 @@ import {
 import {
   blendedBooksForShelf,
   BOOKS_PAGE_SIZE_DESKTOP,
+  BOOKS_TAB_OPTIONS,
   booksPageCount,
   communityPeople,
-  COMMUNITY_SHELF_OPTIONS,
   formatReadLabel,
-  paginateBooks,
+  isCommunityShelfSlug,
+  matchSectionsForViewer,
+  paginateList,
   type BooksListSort,
+  type BooksListTab,
+  type CommunityWorkRow,
   viewerShelfError,
-  visibleCommunityBooks,
+  visibleWorksForShelf,
 } from "./communityView";
-import type {
-  BooksCommunityEntry,
-  CommunityShelfSlug,
-  GoodreadsBook,
-} from "./types";
+import BookReadersModal, { BookAvatarGroup, starsLabel } from "./BookReadersModal";
+import type { BooksCommunityEntry } from "./types";
 
 const MAPPED_CARD_PROPS = {
   bg: "bg.panel",
@@ -117,12 +116,6 @@ function BooksSortSelect({
   );
 }
 
-function stars(rating: number): string {
-  if (!rating || rating < 1) return "";
-  const n = Math.min(5, Math.max(0, Math.round(rating)));
-  return "★".repeat(n) + "☆".repeat(5 - n);
-}
-
 const BOOK_TITLE_MAX_CHARS = 80;
 
 function displayBookTitle(title: string): string {
@@ -131,19 +124,17 @@ function displayBookTitle(title: string): string {
 }
 
 function BookRow({
-  book,
-  ownerName,
-  ownerUserId,
-  ownerAvatarUrl,
+  row,
+  onOpenReaders,
 }: {
-  book: GoodreadsBook;
-  ownerName: string;
-  ownerUserId?: number;
-  ownerAvatarUrl?: string;
+  row: CommunityWorkRow;
+  onOpenReaders: (row: CommunityWorkRow) => void;
 }) {
+  const book = row.book;
   const cover = (book.book_large_image_url || book.book_image_url).trim();
-  const rating = stars(book.user_rating);
-  const readLabel = formatReadLabel(book);
+  const showPersonMeta = !row.collapsed;
+  const rating = showPersonMeta ? starsLabel(book.user_rating) : "";
+  const readLabel = showPersonMeta ? formatReadLabel(book) : null;
   const displayTitle = displayBookTitle(book.title);
   const title = book.link ? (
     <Link href={book.link} target="_blank" rel="noreferrer" title={book.title}>
@@ -152,22 +143,6 @@ function BookRow({
   ) : (
     displayTitle
   );
-  const ownerAvatar = (
-    <Avatar.Root size="xs" flexShrink={0}>
-      {ownerAvatarUrl ? <Avatar.Image src={ownerAvatarUrl} alt="" /> : null}
-      <Avatar.Fallback name={ownerName} />
-    </Avatar.Root>
-  );
-  const ownerBlock =
-    ownerUserId != null ? (
-      <Box flexShrink={0} title={ownerName} aria-label={ownerName}>
-        <FriendProfileLink userId={ownerUserId}>{ownerAvatar}</FriendProfileLink>
-      </Box>
-    ) : (
-      <Box flexShrink={0} title={ownerName} aria-label={ownerName}>
-        {ownerAvatar}
-      </Box>
-    );
   return (
     <Box
       {...MAPPED_CARD_PROPS}
@@ -202,7 +177,10 @@ function BookRow({
               >
                 {title}
               </Text>
-              {ownerBlock}
+              <BookAvatarGroup
+                readers={row.groupReaders}
+                onOpen={() => onOpenReaders(row)}
+              />
             </HStack>
             <Text
               color="fg.muted"
@@ -262,8 +240,7 @@ export default function BooksPage() {
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
 
-  const [communityShelf, setCommunityShelf] =
-    useState<CommunityShelfSlug>("currently-reading");
+  const [listTab, setListTab] = useState<BooksListTab>("currently-reading");
   const [communityEntries, setCommunityEntries] = useState<BooksCommunityEntry[]>([]);
   const [communityBusy, setCommunityBusy] = useState(false);
   const [communityError, setCommunityError] = useState<string | null>(null);
@@ -271,6 +248,7 @@ export default function BooksPage() {
   const [listPage, setListPage] = useState(1);
   const [listSort, setListSort] = useState<BooksListSort>("user");
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [readersRow, setReadersRow] = useState<CommunityWorkRow | null>(null);
 
   const people = useMemo(() => communityPeople(communityEntries), [communityEntries]);
   const peopleForFilter = useMemo(
@@ -326,23 +304,37 @@ export default function BooksPage() {
     };
   }, [isLoading, sessionError, isApproved, communityLoaded, loadCommunity]);
 
-  const unfilteredRows = useMemo(
-    () => blendedBooksForShelf(communityEntries, communityShelf),
-    [communityEntries, communityShelf],
-  );
-  const visibleRows = useMemo(
+  const unfilteredRows = useMemo(() => {
+    if (!isCommunityShelfSlug(listTab)) return [];
+    return blendedBooksForShelf(communityEntries, listTab);
+  }, [communityEntries, listTab]);
+  const visibleRows = useMemo(() => {
+    if (!isCommunityShelfSlug(listTab)) return [];
+    return visibleWorksForShelf(
+      communityEntries,
+      listTab,
+      orderedCheckedUserIds,
+      listSort,
+    );
+  }, [communityEntries, listTab, orderedCheckedUserIds, listSort]);
+  const matchSections = useMemo(
     () =>
-      visibleCommunityBooks(
-        communityEntries,
-        communityShelf,
-        orderedCheckedUserIds,
-        listSort,
-      ),
-    [communityEntries, communityShelf, orderedCheckedUserIds, listSort],
+      listTab === "matches"
+        ? matchSectionsForViewer(
+            communityEntries,
+            orderedCheckedUserIds,
+            viewerUserId,
+            listSort,
+          )
+        : [],
+    [listTab, communityEntries, orderedCheckedUserIds, viewerUserId, listSort],
   );
   const ownShelfError = useMemo(
-    () => viewerShelfError(communityEntries, communityShelf, viewerUserId),
-    [communityEntries, communityShelf, viewerUserId],
+    () =>
+      isCommunityShelfSlug(listTab)
+        ? viewerShelfError(communityEntries, listTab, viewerUserId)
+        : null,
+    [communityEntries, listTab, viewerUserId],
   );
   const totalPages = booksPageCount(visibleRows.length, BOOKS_PAGE_SIZE_DESKTOP);
   const safePage = Math.min(Math.max(1, listPage), totalPages);
@@ -350,14 +342,14 @@ export default function BooksPage() {
     () =>
       isMobile
         ? visibleRows
-        : paginateBooks(visibleRows, safePage, BOOKS_PAGE_SIZE_DESKTOP),
+        : paginateList(visibleRows, safePage, BOOKS_PAGE_SIZE_DESKTOP),
     [isMobile, visibleRows, safePage],
   );
-  const showPager = !isMobile && visibleRows.length > BOOKS_PAGE_SIZE_DESKTOP;
+  const showPager = !isMobile && listTab !== "matches" && visibleRows.length > BOOKS_PAGE_SIZE_DESKTOP;
 
   useEffect(() => {
     setListPage(1);
-  }, [communityShelf, listSort, checkedKey]);
+  }, [listTab, listSort, checkedKey]);
 
   const openLinkModal = () => {
     setLinkError(null);
@@ -480,10 +472,10 @@ export default function BooksPage() {
           </Stack>
 
           <Tabs.Root
-            value={communityShelf}
+            value={listTab}
             variant="plain"
             onValueChange={(details) => {
-              setCommunityShelf(details.value as CommunityShelfSlug);
+              setListTab(details.value as BooksListTab);
               setListPage(1);
             }}
           >
@@ -507,7 +499,7 @@ export default function BooksPage() {
                 flex="1"
                 overflowX="auto"
               >
-                {COMMUNITY_SHELF_OPTIONS.map((opt) => (
+                {BOOKS_TAB_OPTIONS.map((opt) => (
                   <Tabs.Trigger key={opt.value} value={opt.value} {...APP_SHELL_TAB_TRIGGER_PROPS}>
                     <Text as="span" display={{ base: "inline", md: "none" }}>
                       {opt.shortLabel}
@@ -624,6 +616,7 @@ export default function BooksPage() {
                       <Stack gap="2">
                         {!communityBusy &&
                         communityLoaded &&
+                        listTab !== "matches" &&
                         unfilteredRows.length === 0 &&
                         !communityError ? (
                           <PanelEmptyState
@@ -633,6 +626,7 @@ export default function BooksPage() {
                         ) : null}
                         {!communityBusy &&
                         communityLoaded &&
+                        listTab !== "matches" &&
                         unfilteredRows.length > 0 &&
                         visibleRows.length === 0 &&
                         !communityError ? (
@@ -645,16 +639,48 @@ export default function BooksPage() {
                             }
                           />
                         ) : null}
-                        {pageRows.length ? (
+                        {!communityBusy &&
+                        communityLoaded &&
+                        listTab === "matches" &&
+                        matchSections.length === 0 &&
+                        !communityError ? (
+                          <PanelEmptyState
+                            title="No overlapping books yet."
+                            description="When two or more selected people share a title, or someone else's shelf lines up with yours, it shows up here."
+                          />
+                        ) : null}
+                        {listTab === "matches" && matchSections.length > 0 ? (
+                          <Stack gap="4">
+                            {matchSections.map((section) => (
+                              <Stack key={section.id} gap={MAPPED_LIST_STACK_GAP}>
+                                <Text
+                                  fontSize={APP_TEXT_SIZES.helper}
+                                  fontWeight="semibold"
+                                  color="fg.muted"
+                                >
+                                  {section.title}
+                                </Text>
+                                <SimpleGrid {...BOOK_CARD_GRID_PROPS}>
+                                  {section.rows.map((row) => (
+                                    <BookRow
+                                      key={`${section.id}-${row.key}-${row.shelf}`}
+                                      row={row}
+                                      onOpenReaders={setReadersRow}
+                                    />
+                                  ))}
+                                </SimpleGrid>
+                              </Stack>
+                            ))}
+                          </Stack>
+                        ) : null}
+                        {listTab !== "matches" && pageRows.length ? (
                           <Stack gap={MAPPED_LIST_STACK_GAP}>
                             <SimpleGrid {...BOOK_CARD_GRID_PROPS}>
                               {pageRows.map((row) => (
                                 <BookRow
-                                  key={`${row.owner.id}-${row.book.book_id || row.book.title}-${row.book.link}`}
-                                  book={row.book}
-                                  ownerName={row.owner.display_name}
-                                  ownerUserId={row.owner.id}
-                                  ownerAvatarUrl={row.owner.avatar_url}
+                                  key={`${row.key}-${row.shelf}`}
+                                  row={row}
+                                  onOpenReaders={setReadersRow}
                                 />
                               ))}
                               {showPager
@@ -712,6 +738,14 @@ export default function BooksPage() {
           </Box>
         </Box>
       </Box>
+
+      <BookReadersModal
+        open={readersRow != null}
+        onOpenChange={(open) => {
+          if (!open) setReadersRow(null);
+        }}
+        row={readersRow}
+      />
 
       <AppModal
         open={linkModalOpen}

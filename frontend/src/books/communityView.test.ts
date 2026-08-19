@@ -292,10 +292,35 @@ describe("visibleWorksForShelf", () => {
     expect(reading[0]?.groupReaders.map((r) => r.display_name)).toEqual(["Ada", "Bob"]);
     expect(finished[0]?.groupReaders.map((r) => r.display_name)).toEqual(["Ada", "Bob"]);
   });
+
+  it("orders by on-shelf reader count before title", () => {
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Emma"), book("Dune"), book("Circe")] },
+        }),
+      },
+      {
+        user: reader(2, "Bob"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune"), book("Circe")] },
+        }),
+      },
+      {
+        user: reader(3, "Cam"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune")] },
+        }),
+      },
+    ];
+    const rows = visibleWorksForShelf(results, "currently-reading", [1, 2, 3], "title");
+    expect(rows.map((r) => r.book.title)).toEqual(["Dune", "Circe", "Emma"]);
+  });
 });
 
 describe("matchSectionsForViewer", () => {
-  it("groups same-shelf overlaps and viewer cross-status", () => {
+  it("keeps same-shelf together and mixed finished/to-read", () => {
     const results: BooksCommunityEntry[] = [
       {
         user: reader(1, "Ada"),
@@ -315,9 +340,87 @@ describe("matchSectionsForViewer", () => {
     const sections = matchSectionsForViewer(results, [1, 2], 1, "title");
     expect(sections.map((s) => s.id)).toEqual([
       "same-currently-reading",
-      "you-finished-they-want",
+      "pair-to-read-finished",
     ]);
     expect(sections[0]?.rows.map((r) => r.book.title)).toEqual(["Dune"]);
     expect(sections[1]?.rows.map((r) => r.book.title)).toEqual(["Emma"]);
+  });
+
+  it("puts reading/to-read in a mixed pair for any viewer", () => {
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune")] },
+        }),
+      },
+      {
+        user: reader(2, "Zoe"),
+        shelves: emptyShelves({
+          "to-read": { books: [book("Dune")] },
+        }),
+      },
+      {
+        user: reader(3, "Cam"),
+        shelves: emptyShelves({}),
+      },
+    ];
+    for (const viewer of [1, 2, 3]) {
+      const sections = matchSectionsForViewer(results, [1, 2, 3], viewer, "title");
+      expect(sections.map((s) => s.id)).toEqual(["pair-reading-to-read"]);
+      expect(sections[0]?.rows.map((r) => r.book.title)).toEqual(["Dune"]);
+    }
+  });
+
+  it("puts three distinct shelves in Other", () => {
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune")] },
+        }),
+      },
+      {
+        user: reader(2, "Zoe"),
+        shelves: emptyShelves({
+          "to-read": { books: [book("Dune")] },
+        }),
+      },
+      {
+        user: reader(3, "Cam"),
+        shelves: emptyShelves({
+          read: { books: [book("Dune")] },
+        }),
+      },
+    ];
+    const sections = matchSectionsForViewer(results, [1, 2, 3], 1, "title");
+    expect(sections.map((s) => s.id)).toEqual(["other"]);
+    expect(sections[0]?.rows.map((r) => r.book.title)).toEqual(["Dune"]);
+  });
+
+  it("keeps together-only when two share a shelf and a third differs", () => {
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune")] },
+        }),
+      },
+      {
+        user: reader(2, "Zoe"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("Dune")] },
+        }),
+      },
+      {
+        user: reader(3, "Cam"),
+        shelves: emptyShelves({
+          read: { books: [book("Dune")] },
+        }),
+      },
+    ];
+    const sections = matchSectionsForViewer(results, [1, 2, 3], 1, "title");
+    expect(sections.map((s) => s.id)).toEqual(["same-currently-reading"]);
+    expect(sections[0]?.rows.map((r) => r.book.title)).toEqual(["Dune"]);
   });
 });

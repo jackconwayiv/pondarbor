@@ -350,7 +350,13 @@ function workRowFromPlacements(
   };
 }
 
+function shelfReaderCount(row: CommunityWorkRow): number {
+  return uniqueReaders(row.byShelf[row.shelf]).length;
+}
+
 function compareWorkRows(a: CommunityWorkRow, b: CommunityWorkRow, sort: BooksListSort): number {
+  const byCount = shelfReaderCount(b) - shelfReaderCount(a);
+  if (byCount !== 0) return byCount;
   if (sort === "user") {
     const aName = uniqueReaders(a.byShelf[a.shelf])[0]?.display_name ?? "";
     const bName = uniqueReaders(b.byShelf[b.shelf])[0]?.display_name ?? "";
@@ -399,26 +405,44 @@ export function visibleWorksForShelf(
   return collapsedRowsForShelf(indexCommunityWorks(results, checkedUserIds), shelf, sort);
 }
 
-function viewerHasShelf(
-  placements: WorkPlacement[],
-  viewerUserId: number,
-  shelf: CommunityShelfSlug,
-): boolean {
-  return placements.some((p) => p.reader.id === viewerUserId && p.shelf === shelf);
+const MIXED_PAIR_OPTIONS: {
+  id: string;
+  title: string;
+  a: CommunityShelfSlug;
+  b: CommunityShelfSlug;
+}[] = [
+  { id: "pair-reading-to-read", title: "Reading / to-read", a: "currently-reading", b: "to-read" },
+  { id: "pair-reading-finished", title: "Reading / finished", a: "currently-reading", b: "read" },
+  { id: "pair-reading-dnf", title: "Reading / DNF", a: "currently-reading", b: "did-not-finish" },
+  { id: "pair-to-read-finished", title: "To-read / finished", a: "to-read", b: "read" },
+  { id: "pair-to-read-dnf", title: "To-read / DNF", a: "to-read", b: "did-not-finish" },
+  { id: "pair-finished-dnf", title: "Finished / DNF", a: "read", b: "did-not-finish" },
+];
+
+function occupiedShelves(placements: WorkPlacement[]): CommunityShelfSlug[] {
+  const byShelf = emptyByShelf();
+  for (const row of placements) {
+    byShelf[row.shelf].push(row);
+  }
+  return COMMUNITY_SHELF_SLUGS.filter((slug) => uniqueReaders(byShelf[slug]).length > 0);
 }
 
-function othersHaveShelf(
-  placements: WorkPlacement[],
-  viewerUserId: number,
-  shelf: CommunityShelfSlug,
-): boolean {
-  return placements.some((p) => p.reader.id !== viewerUserId && p.shelf === shelf);
+function hasSameShelfOverlap(placements: WorkPlacement[]): boolean {
+  const byShelf = emptyByShelf();
+  for (const row of placements) {
+    byShelf[row.shelf].push(row);
+  }
+  return COMMUNITY_SHELF_SLUGS.some((slug) => uniqueReaders(byShelf[slug]).length >= 2);
+}
+
+function primaryOccupiedShelf(placements: WorkPlacement[]): CommunityShelfSlug | null {
+  return occupiedShelves(placements)[0] ?? null;
 }
 
 export function matchSectionsForViewer(
   results: BooksCommunityEntry[],
   checkedUserIds: readonly number[],
-  viewerUserId: number | undefined,
+  _viewerUserId: number | undefined,
   sort: BooksListSort,
 ): MatchSection[] {
   const indexed = indexCommunityWorks(results, checkedUserIds);
@@ -428,53 +452,40 @@ export function matchSectionsForViewer(
     rows: collapsedRowsForShelf(indexed, opt.value, sort).filter((row) => row.collapsed),
   }));
 
-  const withYou: MatchSection[] = [];
-  if (viewerUserId != null && checkedUserIds.includes(viewerUserId)) {
-    const cross: { id: string; title: string; you: CommunityShelfSlug; they: CommunityShelfSlug }[] =
-      [
-        {
-          id: "you-reading-they-finished",
-          title: "You're reading — they finished",
-          you: "currently-reading",
-          they: "read",
-        },
-        {
-          id: "you-reading-they-dnf",
-          title: "You're reading — they DNF",
-          you: "currently-reading",
-          they: "did-not-finish",
-        },
-        {
-          id: "you-reading-they-want",
-          title: "You're reading — they want to read",
-          you: "currently-reading",
-          they: "to-read",
-        },
-        {
-          id: "you-want-they-finished",
-          title: "You want to read — they finished",
-          you: "to-read",
-          they: "read",
-        },
-        {
-          id: "you-finished-they-want",
-          title: "You finished — they want to read",
-          you: "read",
-          they: "to-read",
-        },
-      ];
-    for (const spec of cross) {
-      const rows: CommunityWorkRow[] = [];
-      for (const [key, placements] of indexed) {
-        if (!viewerHasShelf(placements, viewerUserId, spec.you)) continue;
-        if (!othersHaveShelf(placements, viewerUserId, spec.they)) continue;
-        const row = workRowFromPlacements(key, spec.you, placements);
-        if (row) rows.push(row);
-      }
-      rows.sort((a, b) => compareWorkRows(a, b, sort));
-      withYou.push({ id: spec.id, title: spec.title, rows });
+  const mixedRows = new Map<string, CommunityWorkRow[]>();
+  for (const spec of MIXED_PAIR_OPTIONS) {
+    mixedRows.set(spec.id, []);
+  }
+  const otherRows: CommunityWorkRow[] = [];
+
+  for (const [key, placements] of indexed) {
+    if (hasSameShelfOverlap(placements)) continue;
+    const shelves = occupiedShelves(placements);
+    const primary = primaryOccupiedShelf(placements);
+    if (primary == null) continue;
+    const row = workRowFromPlacements(key, primary, placements);
+    if (!row) continue;
+    if (shelves.length >= 3) {
+      otherRows.push(row);
+      continue;
     }
+    if (shelves.length !== 2) continue;
+    const spec = MIXED_PAIR_OPTIONS.find(
+      (opt) =>
+        (opt.a === shelves[0] && opt.b === shelves[1]) ||
+        (opt.a === shelves[1] && opt.b === shelves[0]),
+    );
+    if (!spec) continue;
+    mixedRows.get(spec.id)!.push(row);
   }
 
-  return [...sameShelf, ...withYou].filter((section) => section.rows.length > 0);
+  const mixed: MatchSection[] = MIXED_PAIR_OPTIONS.map((opt) => {
+    const rows = mixedRows.get(opt.id) ?? [];
+    rows.sort((a, b) => compareWorkRows(a, b, sort));
+    return { id: opt.id, title: opt.title, rows };
+  });
+  otherRows.sort((a, b) => compareWorkRows(a, b, sort));
+  const other: MatchSection = { id: "other", title: "Other", rows: otherRows };
+
+  return [...sameShelf, ...mixed, other].filter((section) => section.rows.length > 0);
 }

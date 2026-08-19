@@ -17,13 +17,3 @@ export function pondarborLogoSrc(): string {
     ? fromShell
     : "/static/pondarborlogo.png";
 }
-
-export function pondarborProfileSrc(): string {
-  if (import.meta.env.DEV) {
-    return "/pondarborprofile.png";
-  }
-  const fromShell = document.documentElement.dataset.pondarborProfile;
-  return fromShell && fromShell.length > 0
-    ? fromShell
-    : "/static/pondarborprofile.png";
-}

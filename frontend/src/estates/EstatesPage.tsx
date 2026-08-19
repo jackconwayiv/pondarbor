@@ -577,7 +577,7 @@ export default function EstatesPage() {
             </HStack>
           </Heading>
           <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
-            Estates is a custom card game designed and developed by Jack! It's a head-to-head card-placing duel. Start a solo game against the computer, or create an open lobby and invite a friend to face you!
+            Estates is a custom card game designed and developed by me! It's a head-to-head card-placing duel. Start a solo game against the computer, or create an open lobby and invite a friend to face you!
           </Text>
           <EstatesResumeBanners
             targets={resumeTargets}

@@ -5,7 +5,6 @@ import {
   Flex,
   Heading,
   HStack,
-  Image,
   SimpleGrid,
   Stack,
   Text,
@@ -23,7 +22,6 @@ import {
 } from "./auth/auth0LoginParams";
 import { canOpenGameTile } from "./gamesNavConfig";
 import PondButton from "./PondButton";
-import { pondarborProfileSrc } from "./publicAsset";
 import { SessionLoadingCard } from "./components/panelStatus";
 import SiteFooter from "./components/SiteFooter";
 import { fullBleedStackProps } from "./responsive";
@@ -33,7 +31,7 @@ import {
 } from "./theme/typography";
 
 const HOME_PURPOSE_BLURB =
-  "Welcome to Pond Arbor! This is a hobby project by Pond Arbor Workshop (Jack Conway) for friends and family to enjoy a variety of social and lifestyle apps and games.";
+  "Welcome to Pond Arbor! This is a hobby project by Pond Arbor Workshop for friends and family to enjoy a variety of social and lifestyle apps and games.";
 
 const GUEST_HOME_APPS: AppNavItem[] = [
   { to: "/whatif", emoji: "🎲", label: "WhatIf", blurb: "" },
@@ -246,7 +244,6 @@ function App() {
                   flexWrap="wrap"
                   gap="3"
                 >
-                  <Image src={pondarborProfileSrc()} width="150px" flexShrink={0} />
                   <Stack flex="1" minW="0" gap="3">
                     <Text
                       fontSize={APP_TEXT_SIZES.body}

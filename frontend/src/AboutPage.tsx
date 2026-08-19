@@ -19,7 +19,7 @@ import { useAppSession } from "./auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import SiteFooter from "./components/SiteFooter";
 import PondButton from "./PondButton";
-import { pondarborLogoSrc, pondarborProfileSrc } from "./publicAsset";
+import { pondarborLogoSrc} from "./publicAsset";
 import { fullBleedStackProps, useIsMobile } from "./responsive";
 import {
   APP_SHELL_TRAY_PROPS,
@@ -97,23 +97,13 @@ export default function AboutPage() {
   alignItems={isMobile ? "stretch" : "flex-start"}
   gap={isMobile ? "2" : "0"}
 >
-  <HStack align="flex-start" gap="3">
-    <Image
-      src={pondarborProfileSrc()}
-      width="50px"
-      borderRadius="md"
-      flexShrink={0}
-    />
-
     <Stack minW={0} gap="2">
       <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-        <b>Pond Arbor</b> is a hobby project developed by <b>Pond Arbor Workshop</b> (Jack Conway) to collect
+        <b>Pond Arbor</b> is a hobby project developed by <b>Pond Arbor Workshop</b> to collect
         various app ideas together in one place. I'm sharing it with friends and
         family as an opportunity to interact through these earth-shattering apps.
       </Text>
-
     </Stack>
-  </HStack>
 </Flex>
             </Box>
 

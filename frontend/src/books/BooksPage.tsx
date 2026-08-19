@@ -116,7 +116,7 @@ function BooksSortSelect({
   );
 }
 
-const BOOK_TITLE_MAX_CHARS = 80;
+const BOOK_TITLE_MAX_CHARS = 65;
 
 function displayBookTitle(title: string): string {
   if (title.length <= BOOK_TITLE_MAX_CHARS) return title;

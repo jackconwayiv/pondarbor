@@ -350,12 +350,12 @@ function workRowFromPlacements(
   };
 }
 
-function shelfReaderCount(row: CommunityWorkRow): number {
-  return uniqueReaders(row.byShelf[row.shelf]).length;
+function attachedReaderCount(row: CommunityWorkRow): number {
+  return row.groupReaders.length;
 }
 
 function compareWorkRows(a: CommunityWorkRow, b: CommunityWorkRow, sort: BooksListSort): number {
-  const byCount = shelfReaderCount(b) - shelfReaderCount(a);
+  const byCount = attachedReaderCount(b) - attachedReaderCount(a);
   if (byCount !== 0) return byCount;
   if (sort === "user") {
     const aName = uniqueReaders(a.byShelf[a.shelf])[0]?.display_name ?? "";
@@ -418,6 +418,20 @@ const MIXED_PAIR_OPTIONS: {
   { id: "pair-to-read-dnf", title: "To-read / DNF", a: "to-read", b: "did-not-finish" },
   { id: "pair-finished-dnf", title: "Finished / DNF", a: "read", b: "did-not-finish" },
 ];
+
+const MATCH_SECTION_ORDER = [
+  "same-currently-reading",
+  "pair-reading-to-read",
+  "pair-reading-dnf",
+  "pair-reading-finished",
+  "same-to-read",
+  "pair-to-read-dnf",
+  "pair-to-read-finished",
+  "same-did-not-finish",
+  "pair-finished-dnf",
+  "same-read",
+  "other",
+] as const;
 
 function occupiedShelves(placements: WorkPlacement[]): CommunityShelfSlug[] {
   const byShelf = emptyByShelf();
@@ -487,5 +501,10 @@ export function matchSectionsForViewer(
   otherRows.sort((a, b) => compareWorkRows(a, b, sort));
   const other: MatchSection = { id: "other", title: "Other", rows: otherRows };
 
-  return [...sameShelf, ...mixed, other].filter((section) => section.rows.length > 0);
+  const byId = new Map<string, MatchSection>();
+  for (const section of [...sameShelf, ...mixed, other]) {
+    byId.set(section.id, section);
+  }
+  return MATCH_SECTION_ORDER.map((id) => byId.get(id))
+    .filter((section): section is MatchSection => Boolean(section && section.rows.length > 0));
 }

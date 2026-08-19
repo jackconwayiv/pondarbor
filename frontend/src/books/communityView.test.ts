@@ -317,6 +317,28 @@ describe("visibleWorksForShelf", () => {
     const rows = visibleWorksForShelf(results, "currently-reading", [1, 2, 3], "title");
     expect(rows.map((r) => r.book.title)).toEqual(["Dune", "Circe", "Emma"]);
   });
+
+  it("orders by attached readers across shelves on to-read", () => {
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "to-read": { books: [book("Circe"), book("Emma")] },
+        }),
+      },
+      {
+        user: reader(2, "Bob"),
+        shelves: emptyShelves({
+          read: { books: [book("Emma")] },
+        }),
+      },
+    ];
+    const rows = visibleWorksForShelf(results, "to-read", [1, 2], "title");
+    expect(rows.map((r) => `${r.book.title}:${r.groupReaders.length}`)).toEqual([
+      "Emma:2",
+      "Circe:1",
+    ]);
+  });
 });
 
 describe("matchSectionsForViewer", () => {
@@ -422,5 +444,49 @@ describe("matchSectionsForViewer", () => {
     const sections = matchSectionsForViewer(results, [1, 2, 3], 1, "title");
     expect(sections.map((s) => s.id)).toEqual(["same-currently-reading"]);
     expect(sections[0]?.rows.map((r) => r.book.title)).toEqual(["Dune"]);
+  });
+
+  it("emits Matches sections in reading-then-want-then-dnf-then-done order", () => {
+    const results: BooksCommunityEntry[] = [
+      {
+        user: reader(1, "Ada"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("TogetherRead"), book("MixWant"), book("MixDnf"), book("MixDone")] },
+          "to-read": { books: [book("TogetherWant"), book("WantDnf"), book("WantDone")] },
+          "did-not-finish": { books: [book("TogetherDnf"), book("DnfDone")] },
+          read: { books: [book("TogetherDone"), book("OtherBook")] },
+        }),
+      },
+      {
+        user: reader(2, "Zoe"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("TogetherRead")] },
+          "to-read": { books: [book("TogetherWant"), book("MixWant")] },
+          "did-not-finish": { books: [book("TogetherDnf"), book("MixDnf"), book("WantDnf")] },
+          read: { books: [book("TogetherDone"), book("MixDone"), book("WantDone"), book("DnfDone")] },
+        }),
+      },
+      {
+        user: reader(3, "Cam"),
+        shelves: emptyShelves({
+          "currently-reading": { books: [book("OtherBook")] },
+          "to-read": { books: [book("OtherBook")] },
+        }),
+      },
+    ];
+    const sections = matchSectionsForViewer(results, [1, 2, 3], 1, "title");
+    expect(sections.map((s) => s.id)).toEqual([
+      "same-currently-reading",
+      "pair-reading-to-read",
+      "pair-reading-dnf",
+      "pair-reading-finished",
+      "same-to-read",
+      "pair-to-read-dnf",
+      "pair-to-read-finished",
+      "same-did-not-finish",
+      "pair-finished-dnf",
+      "same-read",
+      "other",
+    ]);
   });
 });

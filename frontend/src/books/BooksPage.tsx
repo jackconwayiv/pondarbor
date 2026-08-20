@@ -66,6 +66,12 @@ import {
   visibleWorksForShelf,
 } from "./communityView";
 import BookReadersModal, { BookAvatarGroup, starsLabel } from "./BookReadersModal";
+import {
+  clearCommunitySnapshot,
+  communityEntriesEqual,
+  readCommunitySnapshot,
+  writeCommunitySnapshot,
+} from "./communityCache";
 import type { BooksCommunityEntry } from "./types";
 
 const MAPPED_CARD_PROPS = {
@@ -277,13 +283,26 @@ export default function BooksPage() {
   const loadCommunity = useCallback(async () => {
     const token = await getApiAccessToken();
     const data = await fetchBooksCommunity(token);
-    setCommunityEntries(data.results);
+    setCommunityEntries((prev) =>
+      communityEntriesEqual(prev, data.results) ? prev : data.results,
+    );
+    if (viewerUserId != null) {
+      writeCommunitySnapshot(viewerUserId, data.results);
+    }
     setCommunityLoaded(true);
-  }, [getApiAccessToken]);
+  }, [getApiAccessToken, viewerUserId]);
 
   useEffect(() => {
     if (isLoading || sessionError || !isApproved || communityLoaded) return;
     let cancelled = false;
+    if (viewerUserId != null) {
+      const snap = readCommunitySnapshot(viewerUserId);
+      if (snap) {
+        // Show last snapshot immediately; do not flip communityLoaded here or
+        // this effect will re-run and cancel the background fetch.
+        setCommunityEntries(snap.results);
+      }
+    }
     (async () => {
       setCommunityBusy(true);
       setCommunityError(null);
@@ -303,7 +322,14 @@ export default function BooksPage() {
     return () => {
       cancelled = true;
     };
-  }, [isLoading, sessionError, isApproved, communityLoaded, loadCommunity]);
+  }, [
+    isLoading,
+    sessionError,
+    isApproved,
+    communityLoaded,
+    loadCommunity,
+    viewerUserId,
+  ]);
 
   const unfilteredRows = useMemo(() => {
     if (!isCommunityShelfSlug(listTab)) return [];
@@ -366,6 +392,7 @@ export default function BooksPage() {
       const data = await linkGoodreadsProfile(token, profileUrl.trim());
       applySession(data.session as SessionUser | undefined);
       await resyncSessionSilently();
+      if (viewerUserId != null) clearCommunitySnapshot(viewerUserId);
       setCommunityLoaded(false);
       if (data.goodreads_user_id) {
         setProfileUrl(`https://www.goodreads.com/user/show/${data.goodreads_user_id}`);
@@ -386,6 +413,7 @@ export default function BooksPage() {
       const data = await unlinkGoodreadsProfile(token);
       applySession(data.session as SessionUser | undefined);
       setProfileUrl("");
+      if (viewerUserId != null) clearCommunitySnapshot(viewerUserId);
       setCommunityLoaded(false);
       setLinkModalOpen(false);
     } catch (e) {
@@ -416,7 +444,12 @@ export default function BooksPage() {
     );
   }
 
-  const headingBusy = communityBusy && !communityEntries.length;
+  const headingStatus =
+    communityBusy && !communityEntries.length
+      ? "Loading…"
+      : communityBusy && communityEntries.length > 0
+        ? "Updating…"
+        : null;
   const linkButtonLabel = savedId ? "Edit Goodreads" : "Link Goodreads";
 
   return (
@@ -443,7 +476,7 @@ export default function BooksPage() {
                         📚
                       </Text>
                       <Text as="span">Books</Text>
-                      {headingBusy ? (
+                      {headingStatus ? (
                         <Text
                           as="span"
                           fontSize={APP_TEXT_SIZES.helper}
@@ -451,7 +484,7 @@ export default function BooksPage() {
                           fontWeight="medium"
                           aria-live="polite"
                         >
-                          Loading…
+                          {headingStatus}
                         </Text>
                       ) : null}
                     </HStack>

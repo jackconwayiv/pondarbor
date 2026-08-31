@@ -197,3 +197,94 @@ class SlackStaffInteractionTests(TestCase):
         self.assertEqual(pending.account_status, User.AccountStatus.PENDING)
         mock_confirm.assert_called_once()
         self.assertIn("Staff access required", mock_confirm.call_args.kwargs["text"])
+
+
+@override_settings(
+    SLACK_SIGNING_SECRET="test_secret",
+    SLACK_BOT_TOKEN="xoxb-test",
+)
+class SlackDmButtonDismissTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.alice = User.objects.create_user(email="alice-dm@example.com", password="secret12345")
+        self.alice.account_status = User.AccountStatus.APPROVED
+        self.alice.save(update_fields=["account_status"])
+        Profile.objects.update_or_create(user=self.alice, defaults={"display_name": "Alice"})
+        self.bob = User.objects.create_user(email="bob-dm@example.com", password="secret12345")
+        self.bob.account_status = User.AccountStatus.APPROVED
+        self.bob.save(update_fields=["account_status"])
+        Profile.objects.update_or_create(user=self.bob, defaults={"display_name": "Bob"})
+        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_bob_dm", user=self.bob)
+        FriendRequest.objects.create(requester=self.alice, requested=self.bob)
+
+    def _dm_payload(self):
+        return {
+            "type": "block_actions",
+            "team": {"id": "T_test"},
+            "user": {"id": "U_bob_dm"},
+            "channel": {"id": "D0123456789", "type": "im"},
+            "response_url": "https://hooks.slack.com/actions/T_test/123/abc",
+            "message": {
+                "text": "Alice sent a friend request",
+                "blocks": [
+                    {"type": "section", "block_id": "copy", "text": {"type": "mrkdwn", "text": "Alice sent a friend request"}},
+                    {
+                        "type": "actions",
+                        "block_id": "btns",
+                        "elements": [
+                            {"type": "button", "action_id": "friends_accept", "value": str(self.alice.id)},
+                            {"type": "button", "action_id": "friends_decline", "value": str(self.alice.id)},
+                        ],
+                    },
+                ],
+            },
+            "actions": [
+                {
+                    "action_id": "friends_accept",
+                    "block_id": "btns",
+                    "value": str(self.alice.id),
+                }
+            ],
+        }
+
+    @mock.patch("slack_integration.interactions.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.interactions.slack_response_url_replace", return_value={"ok": True})
+    def test_dm_click_strips_action_row(self, mock_replace, mock_confirm):
+        resp = _post_interaction(client=self.client, payload=self._dm_payload(), secret="test_secret")
+        self.assertEqual(resp.status_code, 200)
+        mock_replace.assert_called_once()
+        kwargs = mock_replace.call_args.kwargs
+        block_types = [b.get("type") for b in kwargs["blocks"]]
+        self.assertIn("section", block_types)
+        self.assertNotIn("actions", block_types)
+        mock_confirm.assert_called_once()
+
+    @mock.patch("slack_integration.interactions.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.interactions.slack_response_url_replace", return_value={"ok": True})
+    def test_channel_click_does_not_replace_public_message(self, mock_replace, mock_confirm):
+        payload = self._dm_payload()
+        payload["channel"] = {"id": "C0BU06ABUMA", "type": "channel"}
+        resp = _post_interaction(client=self.client, payload=payload, secret="test_secret")
+        self.assertEqual(resp.status_code, 200)
+        mock_replace.assert_not_called()
+        mock_confirm.assert_called_once()
+
+    @mock.patch("slack_integration.interactions.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.interactions.slack_response_url_replace", return_value={"ok": True})
+    def test_ephemeral_click_strips_buttons(self, mock_replace, mock_confirm):
+        payload = self._dm_payload()
+        payload["channel"] = {"id": "C0BU06ABUMA", "type": "channel"}
+        payload["container"] = {"is_ephemeral": True, "channel_id": "C0BU06ABUMA"}
+        resp = _post_interaction(client=self.client, payload=payload, secret="test_secret")
+        self.assertEqual(resp.status_code, 200)
+        mock_replace.assert_called_once()
+
+    @mock.patch("slack_integration.interactions.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.interactions.slack_response_url_replace")
+    def test_failed_action_keeps_buttons(self, mock_replace, mock_confirm):
+        payload = self._dm_payload()
+        FriendRequest.objects.filter(requester=self.alice, requested=self.bob).delete()
+        resp = _post_interaction(client=self.client, payload=payload, secret="test_secret")
+        self.assertEqual(resp.status_code, 200)
+        mock_replace.assert_not_called()
+        mock_confirm.assert_called_once()

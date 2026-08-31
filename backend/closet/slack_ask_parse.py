@@ -35,6 +35,12 @@ _WEEKDAYS = (
 )
 
 _STOP = frozenset({"a", "an", "the", "some", "any", "of", "please", "pls"})
+_PRONOUN_ITEMS = frozenset({"one", "it", "this", "that", "any", "some", "something", "anything"})
+
+_TRAILING_HEDGE_RE = re.compile(
+    r"\s+if\s+(?:any(?:one|body)|someone|somebody)\s+(?:has|have|got)\s+(?:one|it|any|some)\b.*$",
+    re.I,
+)
 
 # Filler for inventory scans of the raw Slack message (not for extracted item phrases).
 _SCAN_STOP = _STOP | frozenset(
@@ -168,6 +174,10 @@ _QTY_NEED_N = re.compile(
 
 _ASK_PATTERNS = (
     re.compile(
+        r"\bborrow\s+(?:a|an|some)\s+(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
         r"(?:(?:does|do|has|have)\s+)?(?:any(?:one|body))\s+(?:have|has|got)\s+(?:a |an |the |some |any )?(?P<item>.+)",
         re.I,
     ),
@@ -205,6 +215,18 @@ _ASK_PATTERNS = (
         + r")\s+)?(?:a |an |the |some )?(?P<item>.+)",
         re.I,
     ),
+    re.compile(
+        r"(?:would\s+(?:love|like)|want|wanna)\s+to\s+borrow\s+(?:(?P<qty>\d+|"
+        + "|".join(_WORD_QTY)
+        + r")\s+)?(?:a |an |the |some )?(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
+        r"\bto\s+borrow\s+(?:(?P<qty>\d+|"
+        + "|".join(_WORD_QTY)
+        + r")\s+)?(?:a |an |the |some )?(?P<item>.+)",
+        re.I,
+    ),
 )
 
 MATCH_SCORE_THRESHOLD = 0.42
@@ -226,17 +248,12 @@ def parse_closet_ask(text: str, *, today: date | None = None) -> ClosetAskParse 
     today = today or date.today()
     working, needed_by = _extract_need_by(raw, today=today)
     working, qty_from_tail = _extract_trailing_quantity(working)
-    match = _match_ask(working)
-    if not match:
+    working = _TRAILING_HEDGE_RE.sub("", working).strip()
+    chosen = _best_ask(working)
+    if not chosen:
         return None
-    item_raw = (match.group("item") or "").strip()
-    qty_from_pat = None
-    if "qty" in match.re.groupindex:
-        qty_from_pat = _parse_qty_token(match.group("qty"))
-    item_query, qty_from_item = _clean_item_phrase(item_raw)
-    if not item_query:
-        return None
-    quantity = qty_from_pat or qty_from_item or qty_from_tail
+    item_query, quantity = chosen
+    quantity = quantity or qty_from_tail
     return ClosetAskParse(
         item_query=item_query,
         quantity=quantity,
@@ -424,12 +441,22 @@ def item_query_from_message_matches(text: str, items) -> str:
     return (best_term or name).strip()[:255]
 
 
-def _match_ask(text: str) -> re.Match[str] | None:
+def _best_ask(text: str) -> tuple[str, int | None] | None:
+    """Return the strongest (item_query, qty) among all ask-pattern hits."""
+    best: tuple[str, int | None] | None = None
     for pat in _ASK_PATTERNS:
         m = pat.search(text)
-        if m:
-            return m
-    return None
+        if not m:
+            continue
+        item_raw = (m.group("item") or "").strip()
+        qty_pat = _parse_qty_token(m.group("qty")) if "qty" in m.re.groupindex else None
+        item_query, qty_item = _clean_item_phrase(item_raw)
+        if not item_query:
+            continue
+        qty = qty_pat or qty_item
+        if best is None or len(item_query) > len(best[0]):
+            best = (item_query, qty)
+    return best
 
 
 def _parse_qty_token(raw: str | None) -> int | None:
@@ -458,13 +485,17 @@ def _clean_item_phrase(phrase: str) -> tuple[str, int | None]:
         qty = _parse_qty_token(leading.group(1))
         s = leading.group(2).strip()
     s = re.sub(r"\s+from\s+(?:somebody|someone|anyone|anybody)\b.*$", "", s, flags=re.I)
+    s = _TRAILING_HEDGE_RE.sub("", s)
+    s = re.sub(r"\s+if\s+(?:any(?:one|body)|someone|somebody)\b.*$", "", s, flags=re.I)
+    s = re.sub(r"\s+(?:if|when|because|but|so|please|pls)\b.*$", "", s, flags=re.I)
     s = re.sub(r"^(?:a|an|the|some|any)\s+", "", s, flags=re.I)
     if s.casefold().startswith("to "):
         return "", qty
     s = re.sub(r"\s+", " ", s).strip(" .,;:-")
     if len(s) < 3:
         return "", qty
-    if s.casefold() in _STOP:
+    folded = s.casefold()
+    if folded in _STOP or folded in _PRONOUN_ITEMS:
         return "", qty
     return s, qty
 

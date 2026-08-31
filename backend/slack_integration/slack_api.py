@@ -120,3 +120,27 @@ def slack_chat_post_ephemeral(
     except ValueError:
         logger.warning("slack chat.postEphemeral non-json status=%s", r.status_code)
         return {"ok": False, "error": "invalid_json"}
+
+
+def slack_response_url_replace(
+    *,
+    response_url: str,
+    text: str,
+    blocks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Replace the message that triggered a Block Kit action (DM or ephemeral)."""
+    url = (response_url or "").strip()
+    if not url:
+        return {"ok": False, "error": "missing_response_url"}
+    body: dict[str, Any] = {"replace_original": True, "text": text}
+    if blocks is not None:
+        body["blocks"] = blocks
+    r = requests.post(url, json=body, timeout=12)
+    try:
+        data = r.json()
+    except ValueError:
+        logger.warning("slack response_url replace non-json status=%s", r.status_code)
+        return {"ok": False, "error": "invalid_json"}
+    if isinstance(data, dict) and "ok" in data:
+        return data
+    return {"ok": bool(r.ok)}

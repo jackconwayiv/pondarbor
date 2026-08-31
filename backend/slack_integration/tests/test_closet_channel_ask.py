@@ -255,7 +255,7 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
         mock_post.assert_not_called()
         mock_dm.assert_not_called()
         mock_eph.assert_called()
-        self.assertIn("didn't look like a borrow ask", mock_eph.call_args.kwargs["text"])
+        self.assertIn("didn't look like a borrow request", mock_eph.call_args.kwargs["text"])
         self.assertEqual(ClosetChannelAsk.objects.count(), 0)
 
     def test_rich_text_blocks_without_text_field_still_parse(self):
@@ -327,10 +327,11 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Item.objects.filter(owner_user=self.borrower).count(), 0)
         mock_confirm.assert_called()
-        self.assertIn("own ask", mock_confirm.call_args.kwargs["text"].lower())
+        self.assertIn("own request", mock_confirm.call_args.kwargs["text"].lower())
 
+    @mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "333.3"})
     @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
-    def test_i_do_with_close_item_sends_picker_not_duplicate(self, mock_dm):
+    def test_i_do_with_close_item_sends_picker_not_duplicate(self, mock_dm, mock_post):
         existing = self.make_item(owner=self.owner, name="Table saw")
         resp = _post_interaction(
             client=self.client,
@@ -343,9 +344,13 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         flat = json.dumps(mock_dm.call_args.kwargs["blocks"])
         self.assertIn("closet_ask_pick_item", flat)
         self.assertIn("closet_ask_create_item", flat)
+        mock_post.assert_called()
+        self.assertIn("says they have", mock_post.call_args.kwargs["text"])
+        self.assertIn("table saw", mock_post.call_args.kwargs["text"].casefold())
 
+    @mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "333.3"})
     @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
-    def test_i_do_without_match_creates_item_and_notifies_requester(self, mock_dm):
+    def test_i_do_without_match_creates_item_and_notifies_requester(self, mock_dm, mock_post):
         resp = _post_interaction(
             client=self.client,
             payload=self._payload(slack_user="U_owner", action_id="closet_ask_i_do", value=str(self.ask.id)),
@@ -359,6 +364,22 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         texts = [c.kwargs.get("text", "") for c in mock_dm.call_args_list]
         self.assertTrue(any("Offer a loan" in t for t in texts))
         self.assertTrue(any("now listed" in t for t in texts))
+        self.assertIn("says they have", mock_post.call_args.kwargs["text"])
+        self.assertTrue(mock_post.call_args.kwargs.get("reply_broadcast"))
+
+    @mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "333.3"})
+    @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
+    def test_second_i_do_does_not_repost_channel_notice(self, mock_dm, mock_post):
+        item = self.make_item(owner=self.owner, name="Table saw")
+        ClosetChannelAskOffer.objects.create(
+            ask=self.ask, owner_user=self.owner, item=item, created_item=False
+        )
+        _post_interaction(
+            client=self.client,
+            payload=self._payload(slack_user="U_owner", action_id="closet_ask_i_do", value=str(self.ask.id)),
+            secret="test_secret",
+        )
+        mock_post.assert_not_called()
 
     @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
     def test_pick_existing_does_not_create_item(self, mock_dm):
@@ -476,7 +497,7 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         mock_eph.assert_called()
-        self.assertEqual(mock_eph.call_args.kwargs["text"], "Okay.")
+        self.assertEqual(mock_eph.call_args.kwargs["text"], "Thanks for replying!")
 
 
 class SlackChannelIdNormalizeTests(SimpleTestCase):

@@ -108,6 +108,25 @@ class ClosetAskParseTests(SimpleTestCase):
             self.assertIsNotNone(parsed, msg=text)
             self.assertEqual(parsed.item_query.casefold(), "extension cord", msg=text)
 
+    def test_love_to_borrow_ignores_trailing_anyone_has_one(self):
+        parsed = parse_closet_ask(
+            "for real tho i would love to borrow a weedwhacker if anyone has one"
+        )
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.item_query.casefold(), "weedwhacker")
+
+    def test_borrow_a_an_some_takes_the_following_object(self):
+        cases = (
+            ("borrow a weedwhacker", "weedwhacker"),
+            ("borrow an extension cord", "extension cord"),
+            ("borrow some placemats", "placemats"),
+            ("could I maybe borrow a ladder", "ladder"),
+        )
+        for text, expected in cases:
+            parsed = parse_closet_ask(text)
+            self.assertIsNotNone(parsed, msg=text)
+            self.assertEqual(parsed.item_query.casefold(), expected, msg=text)
+
 
 class ClosetAskMatchScoreTests(SimpleTestCase):
     def test_exact_name(self):

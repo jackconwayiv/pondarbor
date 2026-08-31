@@ -9,7 +9,19 @@ export type DayBusySection = {
   events: CalendarEvent[];
 };
 
+/**
+ * Own manual events include `title` (possibly ""). Shared/iCal rows always
+ * have `title: null`, so a non-null title is the API's owner-only signal.
+ */
+function ownManualLabel(ev: CalendarEvent): string | null {
+  if (!ev.is_manual || ev.title === null) return null;
+  const trimmed = ev.title.trim();
+  return trimmed || "Busy";
+}
+
 export function busyLabelForEvent(ev: CalendarEvent): string {
+  const ownManual = ownManualLabel(ev);
+  if (ownManual !== null) return ownManual;
   const ownerName = ev.owner.display_name || "Busy";
   if (ev.owner.calendar_display_source_names) {
     return ev.source_display_name || ownerName;
@@ -18,6 +30,9 @@ export function busyLabelForEvent(ev: CalendarEvent): string {
 }
 
 export function busyGroupKeyForEvent(ev: CalendarEvent): string {
+  if (ev.is_manual && ev.title !== null) {
+    return `manual:${ev.id}`;
+  }
   if (ev.owner.calendar_display_source_names) {
     return `source:${ev.source_id}`;
   }

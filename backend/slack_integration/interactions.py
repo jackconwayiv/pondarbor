@@ -47,7 +47,7 @@ from slack_integration.closet_ask import (
     handle_pick_item,
     handle_request_loan,
 )
-from slack_integration.slack_api import slack_chat_post_ephemeral
+from slack_integration.slack_api import slack_chat_post_ephemeral, slack_response_url_replace
 from slack_integration.slack_verify import verify_slack_request_signature
 from slack_integration.views import _resolve_user_for_slack
 from users.models import User
@@ -78,6 +78,53 @@ def _action_value(action: dict) -> str:
         return value
     selected = action.get("selected_option") or {}
     return str(selected.get("value") or "").strip()
+
+
+def _is_per_user_surface(payload: dict) -> bool:
+    """True for DMs and ephemerals — surfaces we can edit for one person only."""
+    container = payload.get("container") or {}
+    if container.get("is_ephemeral"):
+        return True
+    channel = payload.get("channel") or {}
+    ch_type = str(channel.get("type") or "").strip().casefold()
+    if ch_type in {"im", "mpim"}:
+        return True
+    ch_id = str(channel.get("id") or container.get("channel_id") or "").strip()
+    return ch_id.startswith("D")
+
+
+def _blocks_without_clicked_actions(payload: dict) -> list[dict]:
+    message = payload.get("message") or {}
+    blocks = list(message.get("blocks") or [])
+    action = (payload.get("actions") or [{}])[0]
+    block_id = str(action.get("block_id") or "").strip()
+    if block_id:
+        return [block for block in blocks if str(block.get("block_id") or "") != block_id]
+    return [block for block in blocks if block.get("type") != "actions"]
+
+
+def _dismiss_per_user_buttons(payload: dict, *, status_text: str = "") -> bool:
+    if not _is_per_user_surface(payload):
+        return False
+    response_url = str(payload.get("response_url") or "").strip()
+    if not response_url:
+        return False
+    message = payload.get("message") or {}
+    blocks = _blocks_without_clicked_actions(payload)
+    note = (status_text or "").strip()
+    if note:
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": note}],
+            }
+        )
+    text = note or str(message.get("text") or "Done")
+    resp = slack_response_url_replace(response_url=response_url, text=text, blocks=blocks)
+    if not resp.get("ok"):
+        logger.warning("slack replace_original after click failed: %s", resp)
+        return False
+    return True
 
 
 def _parse_id_pair(value: str) -> tuple[int, int]:
@@ -216,6 +263,7 @@ def _handle_block_actions(payload: dict) -> HttpResponse:
 
     try:
         _run_action(user=user, action_id=action_id, value=value, payload=payload)
+        _dismiss_per_user_buttons(payload)
     except (ClosetActionError, FriendActionError, StaffActionError, WhatIfActionError, ContactActionError) as exc:
         notify_slack_action_confirmation(user=user, text=exc.message)
     except Exception:

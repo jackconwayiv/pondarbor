@@ -114,6 +114,10 @@ export default function EventFormDialog({
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
+              onBlur={(e) => {
+                const nextStart = e.currentTarget.value;
+                if (nextStart) setEndDate(nextStart);
+              }}
               {...PANEL_FIELD_PROPS}
             />
           </Stack>

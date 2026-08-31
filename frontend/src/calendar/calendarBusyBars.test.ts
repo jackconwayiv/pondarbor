@@ -49,6 +49,24 @@ describe("busyLabelForEvent", () => {
     });
     expect(busyLabelForEvent(ev)).toBe("Travel");
   });
+
+  it("uses the event title for own manual events", () => {
+    const ev = event({
+      id: 9,
+      owner: {
+        id: 1,
+        display_name: "Alice",
+        avatar_url: "",
+        calendar_display_source_names: true,
+      },
+      source_id: 12,
+      source_display_name: "Manual events",
+      source_type: "manual",
+      is_manual: true,
+      title: "Weedwhacker pickup",
+    });
+    expect(busyLabelForEvent(ev)).toBe("Weedwhacker pickup");
+  });
 });
 
 describe("buildBusyBarsForDay", () => {
@@ -86,6 +104,85 @@ describe("buildBusyBarsForDay", () => {
       [1],
     );
     expect(bars.map((bar) => bar.label)).toEqual(["Travel", "Work"]);
+  });
+
+  it("emits one named bar per own manual event instead of Manual events", () => {
+    const owner = {
+      id: 1,
+      display_name: "Alice",
+      avatar_url: "",
+      calendar_display_source_names: true,
+    };
+    const bars = buildBusyBarsForDay(
+      [
+        event({
+          id: 1,
+          owner,
+          source_id: 12,
+          source_display_name: "Manual events",
+          source_type: "manual",
+          is_manual: true,
+          title: "Camping",
+        }),
+        event({
+          id: 2,
+          owner,
+          source_id: 12,
+          source_display_name: "Manual events",
+          source_type: "manual",
+          is_manual: true,
+          title: "Dentist",
+        }),
+        event({
+          id: 3,
+          owner,
+          source_id: 10,
+          source_display_name: "Travel",
+        }),
+      ],
+      new Set([1]),
+      [1],
+    );
+    expect(bars.map((bar) => bar.label)).toEqual([
+      "Camping",
+      "Dentist",
+      "Travel",
+    ]);
+  });
+
+  it("keeps a friend's manuals lumped when titles are hidden", () => {
+    const owner = {
+      id: 2,
+      display_name: "Bob",
+      avatar_url: "",
+      calendar_display_source_names: true,
+    };
+    const bars = buildBusyBarsForDay(
+      [
+        event({
+          id: 1,
+          owner,
+          source_id: 12,
+          source_display_name: "Manual events",
+          source_type: "manual",
+          is_manual: true,
+          title: null,
+        }),
+        event({
+          id: 2,
+          owner,
+          source_id: 12,
+          source_display_name: "Manual events",
+          source_type: "manual",
+          is_manual: true,
+          title: null,
+        }),
+      ],
+      new Set([2]),
+      [2],
+    );
+    expect(bars).toHaveLength(1);
+    expect(bars[0]?.label).toBe("Manual events");
   });
 
   it("orders owners by checked list and sources alphabetically", () => {
@@ -131,5 +228,42 @@ describe("buildDayBusySections", () => {
     expect(sections).toHaveLength(2);
     expect(sections[0]?.events).toHaveLength(1);
     expect(sections[0]?.label).toBe("Travel");
+  });
+
+  it("gives each own manual event its own named section", () => {
+    const owner = {
+      id: 1,
+      display_name: "Alice",
+      avatar_url: "",
+      calendar_display_source_names: true,
+    };
+    const sections = buildDayBusySections(
+      [
+        event({
+          id: 1,
+          owner,
+          source_id: 12,
+          source_display_name: "Manual events",
+          source_type: "manual",
+          is_manual: true,
+          title: "Camping",
+        }),
+        event({
+          id: 2,
+          owner,
+          source_id: 12,
+          source_display_name: "Manual events",
+          source_type: "manual",
+          is_manual: true,
+          title: "Dentist",
+        }),
+      ],
+      [1],
+    );
+    expect(sections.map((section) => section.label)).toEqual([
+      "Camping",
+      "Dentist",
+    ]);
+    expect(sections.every((section) => section.events.length === 1)).toBe(true);
   });
 });

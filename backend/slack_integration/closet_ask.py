@@ -88,7 +88,7 @@ def handle_closet_channel_message(
                 channel=channel_id,
                 user=slack_user_id,
                 text=(
-                    "ArborBot is listening, but that didn't look like a borrow ask and nothing in "
+                    "ArborBot is listening, but that didn't look like a borrow request and nothing in "
                     "friends' closets matched. Try: *Does anyone have a …?*"
                 ),
             )
@@ -164,7 +164,7 @@ def handle_closet_channel_message(
         channel=channel_id,
         user=slack_user_id,
         text=(
-            f"ArborBot heard your ask for *{ask.item_query}* but couldn't post in this channel "
+            f"ArborBot heard your request for *{ask.item_query}* but couldn't post in this channel "
             f"(`{err}`). Invite @ArborBot to the channel and check `SLACK_CLOSET_CHANNEL_ID`."
         ),
     )
@@ -195,15 +195,15 @@ def handle_request_loan(*, user: User, ask_id: int, item_id: int) -> None:
 def handle_i_dont(*, user: User, ask_id: int, channel_id: str, slack_user_id: str) -> None:
     _get_ask(ask_id)
     if channel_id and slack_user_id:
-        slack_chat_post_ephemeral(channel=channel_id, user=slack_user_id, text="Okay.")
+        slack_chat_post_ephemeral(channel=channel_id, user=slack_user_id, text="Thanks for replying!")
         return
-    notify_slack_action_confirmation(user=user, text="Okay.")
+    notify_slack_action_confirmation(user=user, text="Thanks for replying!")
 
 
 def handle_i_do(*, user: User, ask_id: int) -> None:
     ask = _get_ask(ask_id)
     if ask.requester_user_id == user.id:
-        raise ClosetActionError("That's your own ask.")
+        raise ClosetActionError("That's your own request.")
     existing = (
         ClosetChannelAskOffer.objects.filter(ask=ask, owner_user=user)
         .select_related("item", "ask__requester_user__profile")
@@ -212,6 +212,7 @@ def handle_i_do(*, user: User, ask_id: int) -> None:
     if existing:
         _send_offer_dm(user, existing)
         return
+    _announce_i_do_in_channel(ask=ask, user=user)
     owned = _owned_items(user)
     close = score_closet_items_for_query(ask.item_query, owned)
     if close:
@@ -224,7 +225,7 @@ def handle_i_do(*, user: User, ask_id: int) -> None:
 def handle_pick_item(*, user: User, ask_id: int, item_id: int) -> None:
     ask = _get_ask(ask_id)
     if ask.requester_user_id == user.id:
-        raise ClosetActionError("That's your own ask.")
+        raise ClosetActionError("That's your own request.")
     item = _get_item(item_id)
     if item.owner_user_id != user.id:
         raise ClosetActionError("You can only offer items you own.")
@@ -245,7 +246,7 @@ def handle_pick_item(*, user: User, ask_id: int, item_id: int) -> None:
 def handle_create_item(*, user: User, ask_id: int) -> None:
     ask = _get_ask(ask_id)
     if ask.requester_user_id == user.id:
-        raise ClosetActionError("That's your own ask.")
+        raise ClosetActionError("That's your own request.")
     existing = ClosetChannelAskOffer.objects.filter(ask=ask, owner_user=user).select_related("item").first()
     if existing:
         _send_offer_dm(user, existing)
@@ -306,6 +307,23 @@ def _create_item_and_offer(*, user: User, ask: ClosetChannelAsk) -> ClosetChanne
     _send_offer_dm(user, offer)
     _notify_requester_now_in_closet(ask, item)
     return offer
+
+
+def _announce_i_do_in_channel(*, ask: ClosetChannelAsk, user: User) -> None:
+    channel = (ask.slack_channel_id or "").strip()
+    if not channel:
+        return
+    who = closet_user_label(user)
+    text = f"*{who}* says they have *{ask.item_query}*."
+    thread_ts = (ask.slack_prompt_ts or ask.slack_message_ts or "").strip() or None
+    posted = slack_chat_post_message(
+        channel=channel,
+        text=text,
+        thread_ts=thread_ts,
+        reply_broadcast=bool(thread_ts),
+    )
+    if not posted.get("ok"):
+        logger.warning("closet i_do channel notice failed: %s", posted)
 
 
 def _send_offer_dm(user: User, offer: ClosetChannelAskOffer) -> None:
@@ -378,7 +396,7 @@ def _get_ask(ask_id: int) -> ClosetChannelAsk:
         .first()
     )
     if not ask:
-        raise ClosetActionError("That ask is no longer available.")
+        raise ClosetActionError("That request is no longer available.")
     return ask
 
 

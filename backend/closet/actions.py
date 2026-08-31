@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from achievements.services import evaluate_closet_return_achievements_for_users
-from closet.models import BorrowRequest, Item, Loan
+from closet.models import BorrowRequest, ClosetChannelAsk, Item, Loan
 from friends.services import are_friends
 from slack_integration.dm_queue import (
     EVENT_CLOSET_BORROW_REQUEST,
@@ -55,6 +55,108 @@ def _active_loan_for_item(item: Item):
         .select_related("owner_user", "borrower_user")
         .first()
     )
+
+
+def item_is_loaned(item: Item) -> bool:
+    if item.current_holder_user_id != item.owner_user_id:
+        return True
+    return _active_loan_for_item(item) is not None
+
+
+def create_closet_item(
+    *,
+    user: User,
+    name: str,
+    description: str = "",
+    category: str = "",
+    tags: list | None = None,
+) -> Item:
+    trimmed = (name or "").strip()
+    if not trimmed:
+        raise ClosetActionError("Name is required.")
+    item = Item.objects.create(
+        owner_user=user,
+        current_holder_user=user,
+        name=trimmed[:255],
+        description=description or "",
+        category=category or "",
+        tags=list(tags) if tags else [],
+        custody_disputed=False,
+    )
+    from achievements.services import evaluate_closet_sharing_is_caring_for_user
+
+    evaluate_closet_sharing_is_caring_for_user(user.id)
+    return item
+
+
+def create_borrow_request(
+    *,
+    user: User,
+    item: Item,
+    date_needed_by,
+    message: str = "",
+) -> tuple[BorrowRequest, bool]:
+    """Create or update a pending borrow request. Returns (row, was_update)."""
+    if date_needed_by < timezone.localdate():
+        raise ClosetActionError("Need-by date cannot be in the past.")
+    if item.deleted_at is not None:
+        raise ClosetActionError("Item is not available.")
+    if item.owner_user_id == user.id:
+        raise ClosetActionError("Owners cannot borrow their own items.")
+    if item.current_holder_user_id == user.id:
+        raise ClosetActionError("You are already borrowing this item.")
+    if not are_friends(user_a=user, user_b=item.owner_user):
+        raise ClosetActionError("You can only request items from friends.")
+    existing = (
+        BorrowRequest.objects.filter(
+            item=item,
+            requester_user=user,
+            status=BorrowRequest.Status.PENDING,
+            deleted_at__isnull=True,
+        )
+        .order_by("date_needed_by", "-created_at")
+        .first()
+    )
+    msg = (message or "").strip()
+    if existing:
+        existing.date_needed_by = date_needed_by
+        existing.message = msg
+        existing.save(update_fields=["date_needed_by", "message", "updated_at"])
+        return existing, True
+    row = BorrowRequest.objects.create(
+        item=item,
+        requester_user=user,
+        status=BorrowRequest.Status.PENDING,
+        date_needed_by=date_needed_by,
+        message=msg,
+    )
+    return row, False
+
+
+def offer_loan_from_ask(*, owner: User, ask: ClosetChannelAsk, item: Item) -> tuple[BorrowRequest, Loan | None]:
+    """Create a request as the original asker and auto-approve unless the item is already on loan."""
+    if item.owner_user_id != owner.id:
+        raise ClosetActionError("Only the owner can offer this item.", status_code=403)
+    if ask.requester_user_id == owner.id:
+        raise ClosetActionError("You cannot loan this to yourself.")
+    if not are_friends(user_a=owner, user_b=ask.requester_user):
+        raise ClosetActionError(
+            "You're not friends with this person on PondArbor yet. "
+            "Send a friend request, then offer the loan from Closet."
+        )
+    message_parts = [f"From Slack: {ask.raw_text.strip()}"]
+    if ask.quantity:
+        message_parts.append(f"Requested quantity: {ask.quantity}")
+    row, _ = create_borrow_request(
+        user=ask.requester_user,
+        item=item,
+        date_needed_by=ask.date_needed_by,
+        message="\n".join(message_parts),
+    )
+    if _active_loan_for_item(item):
+        return row, None
+    loan = approve_borrow_request(user=owner, borrow_request_id=row.id)
+    return row, loan
 
 
 def approve_borrow_request(*, user: User, borrow_request_id: int) -> Loan:

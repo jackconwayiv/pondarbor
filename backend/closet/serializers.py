@@ -6,9 +6,10 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from closet.actions import ClosetActionError, create_borrow_request
+
 from closet.constants import CANONICAL_CLOSET_CATEGORY_SET
 from closet.models import BorrowRequest, Item, Loan
-from friends.services import are_friends
 
 _CLOSET_CATEGORY_CUSTOM_RE = re.compile(r"^[A-Za-z/]+$")
 
@@ -367,36 +368,16 @@ class BorrowRequestCreateSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         request = self.context["request"]
-        item: Item = self.context["item"]
-        user = request.user
-        if item.owner_user_id == user.id:
-            raise serializers.ValidationError("Owners cannot borrow their own items.")
-        if item.current_holder_user_id == user.id:
-            raise serializers.ValidationError("You are already borrowing this item.")
-        if not are_friends(user_a=user, user_b=item.owner_user):
-            raise serializers.ValidationError("You can only request items from friends.")
-        existing = (
-            BorrowRequest.objects.filter(
-                item=item,
-                requester_user=user,
-                status=BorrowRequest.Status.PENDING,
-                deleted_at__isnull=True,
+        try:
+            row, _was_update = create_borrow_request(
+                user=request.user,
+                item=self.context["item"],
+                date_needed_by=validated_data["date_needed_by"],
+                message=validated_data.get("message", ""),
             )
-            .order_by("date_needed_by", "-created_at")
-            .first()
-        )
-        if existing:
-            existing.date_needed_by = validated_data["date_needed_by"]
-            existing.message = validated_data.get("message", "")
-            existing.save(update_fields=["date_needed_by", "message", "updated_at"])
-            return existing
-        return BorrowRequest.objects.create(
-            item=item,
-            requester_user=user,
-            status=BorrowRequest.Status.PENDING,
-            date_needed_by=validated_data["date_needed_by"],
-            message=validated_data.get("message", ""),
-        )
+        except ClosetActionError as exc:
+            raise serializers.ValidationError(exc.message) from exc
+        return row
 
 
 class LoanSerializer(serializers.ModelSerializer):

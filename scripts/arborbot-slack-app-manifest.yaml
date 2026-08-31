@@ -4,9 +4,10 @@
 # After import:
 # 1. Install app to workspace → copy Bot User OAuth Token (xoxb-…) → SLACK_BOT_TOKEN
 # 2. Basic Information → Signing Secret → SLACK_SIGNING_SECRET
-# 3. Invite @ArborBot to #song-a-day (and prompts channel if separate)
+# 3. Invite @ArborBot to #song-a-day and #closet (and prompts channel if separate)
 # 4. Copy #song-a-day channel ID (C…) into SLACK_PROMPTS_CHANNEL_ID
 #    (SLACK_SONGADAY_CHANNEL_ID only if submissions are in a different channel)
+#    Copy #closet channel ID into SLACK_CLOSET_CHANNEL_ID (must differ from Song-a-Day)
 # 5. Set env vars on Appliku (see appliku.yml / README)
 #
 # Replace https://www.pondarbor.com with your production origin before import if different.

@@ -138,3 +138,52 @@ class Loan(models.Model):
             models.Index(fields=["borrower_user", "status", "deleted_at"]),
         ]
 
+
+class ClosetChannelAsk(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    requester_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="closet_channel_asks",
+    )
+    item_query = models.CharField(max_length=255)
+    quantity = models.PositiveIntegerField(null=True, blank=True)
+    raw_text = models.TextField()
+    date_needed_by = models.DateField()
+    slack_team_id = models.CharField(max_length=32)
+    slack_channel_id = models.CharField(max_length=32)
+    slack_message_ts = models.CharField(max_length=32)
+    slack_prompt_ts = models.CharField(max_length=32, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["slack_channel_id", "slack_message_ts"]),
+            models.Index(fields=["requester_user", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.item_query} ({self.requester_user_id})"
+
+
+class ClosetChannelAskOffer(models.Model):
+    ask = models.ForeignKey(ClosetChannelAsk, on_delete=models.CASCADE, related_name="offers")
+    owner_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="closet_channel_ask_offers",
+    )
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="channel_ask_offers")
+    created_item = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("ask", "owner_user")]
+        indexes = [models.Index(fields=["ask", "owner_user"])]
+

@@ -517,6 +517,10 @@ def _items_friends_payload(request):
     if tag:
         qs = _friends_items_filter_by_tag(qs, tag)
 
+    q = (request.query_params.get("q") or "").strip()
+    if q:
+        qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
+
     sort_key = (request.query_params.get("sort") or "updated_desc").strip()
     order = FRIENDS_ITEMS_SORT_FIELDS.get(sort_key, FRIENDS_ITEMS_SORT_FIELDS["updated_desc"])
     qs = qs.order_by(*order)

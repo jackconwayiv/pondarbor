@@ -3,7 +3,7 @@
 from django.contrib import admin
 from django.contrib.admin import EmptyFieldListFilter
 
-from closet.models import BorrowRequest, Item, Loan
+from closet.models import BorrowRequest, ClosetChannelAsk, ClosetChannelAskOffer, Item, Loan
 
 
 class _NoDeleteModelAdmin(admin.ModelAdmin):
@@ -80,3 +80,27 @@ class LoanAdmin(_NoDeleteModelAdmin):
     search_fields = ("item__name", "owner_user__email", "borrower_user__email")
     raw_id_fields = ("item", "owner_user", "borrower_user", "approved_request")
     readonly_fields = ("checkout_at",)
+
+
+@admin.register(ClosetChannelAsk)
+class ClosetChannelAskAdmin(_NoDeleteModelAdmin):
+    list_display = (
+        "id",
+        "item_query",
+        "requester_user",
+        "quantity",
+        "status",
+        "slack_channel_id",
+        "created_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("item_query", "raw_text", "requester_user__email")
+    raw_id_fields = ("requester_user",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ClosetChannelAskOffer)
+class ClosetChannelAskOfferAdmin(_NoDeleteModelAdmin):
+    list_display = ("id", "ask", "owner_user", "item", "created_item", "created_at")
+    raw_id_fields = ("ask", "owner_user", "item")
+    readonly_fields = ("created_at",)

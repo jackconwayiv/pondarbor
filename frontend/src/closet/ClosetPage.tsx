@@ -160,6 +160,12 @@ export default function ClosetPage() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [tagFilter, setTagFilter] = useState("");
+  const [nameInput, setNameInput] = useState(
+    () => (searchParams.get("q") ?? "").trim(),
+  );
+  const [nameFilter, setNameFilter] = useState(
+    () => (searchParams.get("q") ?? "").trim(),
+  );
   const [sortKey, setSortKey] = useState<FriendsItemsSort>("updated_desc");
   const [showMyItems, setShowMyItems] = useState(true);
   const [showHidden, setShowHidden] = useState(false);
@@ -347,13 +353,14 @@ export default function ClosetPage() {
     const payload = await fetchFriendsItems(token, gridPage, ITEMS_PAGE_SIZE, {
       category: categoryFilter.trim(),
       tag: tagFilter,
+      q: nameFilter,
       sort: sortKey,
       includeSelf: true,
     });
     setGridItems(payload.results);
     setGridTotal(payload.total);
     return payload;
-  }, [categoryFilter, gridPage, sortKey, tagFilter, getApiAccessToken]);
+  }, [categoryFilter, gridPage, nameFilter, sortKey, tagFilter, getApiAccessToken]);
 
   const loadImages = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -373,6 +380,7 @@ export default function ClosetPage() {
         pageSize: ITEMS_PAGE_SIZE,
         category: categoryFilter.trim(),
         tag: tagFilter,
+        q: nameFilter,
         sort: sortKey,
         includeSelf: true,
       });
@@ -413,7 +421,7 @@ export default function ClosetPage() {
       myItems: myItemsPayload,
       gridResults: gridPayload?.results ?? null,
     };
-  }, [categoryFilter, getApiAccessToken, gridPage, loadGrid, loadMine, sortKey, tagFilter]);
+  }, [categoryFilter, getApiAccessToken, gridPage, loadGrid, loadMine, nameFilter, sortKey, tagFilter]);
 
   const refreshAll = useCallback(async () => {
     const core = await refreshCore();
@@ -666,6 +674,7 @@ export default function ClosetPage() {
   }, [
     categoryFilter,
     gridPage,
+    nameFilter,
     sortKey,
     tagFilter,
     isAuthenticated,
@@ -747,6 +756,27 @@ export default function ClosetPage() {
     return () => window.clearTimeout(id);
   }, [tagInput]);
 
+  const nameFilterPrevRef = useRef(nameFilter);
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const next = nameInput.trim();
+      if (nameFilterPrevRef.current === next) return;
+      nameFilterPrevRef.current = next;
+      setNameFilter(next);
+      setGridPage(1);
+    }, 350);
+    return () => window.clearTimeout(id);
+  }, [nameInput]);
+
+  useEffect(() => {
+    const current = (searchParams.get("q") ?? "").trim();
+    if (nameFilter === current) return;
+    const next = new URLSearchParams(searchParams);
+    if (nameFilter) next.set("q", nameFilter);
+    else next.delete("q");
+    setSearchParams(next, { replace: true });
+  }, [nameFilter, searchParams, setSearchParams]);
+
   if (isLoading) {
     return <SessionLoadingCard />;
   }
@@ -788,6 +818,17 @@ export default function ClosetPage() {
       flexDir={{ base: "column", md: "row" }}
       flexWrap="wrap"
     >
+      <Stack gap="1" minW="160px" flex="1">
+        <Text fontSize={APP_TEXT_SIZES.helper}>Search</Text>
+        <Input
+          value={nameInput}
+          onChange={(e) => setNameInput(e.target.value)}
+          placeholder="Name or description"
+          maxW="100%"
+          width="100%"
+          {...CLOSET_PLACEHOLDER_PROPS}
+        />
+      </Stack>
       <Stack gap="1" minW="160px" flex="1">
         <Text fontSize={APP_TEXT_SIZES.helper}>Category</Text>
         <NativeSelectRoot maxW="280px" w="100%">
@@ -1827,28 +1868,30 @@ export default function ClosetPage() {
                     <PanelEmptyState
                       title={
                         gridItems.length === 0
-                          ? categoryFilter.trim() || tagFilter
+                          ? categoryFilter.trim() || tagFilter || nameFilter
                             ? "No items match your filters."
                             : "No items to show yet."
                           : "All items on this page are filtered out."
                       }
                       description={
                         gridItems.length === 0
-                          ? categoryFilter.trim() || tagFilter
+                          ? categoryFilter.trim() || tagFilter || nameFilter
                             ? "Try clearing your filters."
                             : "When you or your friends add items, they'll show up here."
                           : "Try toggling Show My Items or Show Hidden."
                       }
                       actionLabel={
-                        categoryFilter.trim() || tagFilter
+                        categoryFilter.trim() || tagFilter || nameFilter
                           ? "Clear filters"
                           : "Refresh"
                       }
                       onAction={() => {
-                        if (categoryFilter.trim() || tagFilter) {
+                        if (categoryFilter.trim() || tagFilter || nameFilter) {
                           setCategoryFilter("");
                           setTagFilter("");
                           setTagInput("");
+                          setNameFilter("");
+                          setNameInput("");
                           setGridPage(1);
                         } else {
                           void loadGrid();

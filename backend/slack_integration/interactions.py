@@ -38,6 +38,16 @@ from friends.actions import (
     accept_incoming_friend_request,
     decline_incoming_friend_request,
 )
+from slack_integration.closet_ask import (
+    handle_create_item,
+    handle_i_do,
+    handle_i_dont,
+    handle_offer_no,
+    handle_offer_yes,
+    handle_pick_item,
+    handle_request_loan,
+)
+from slack_integration.slack_api import slack_chat_post_ephemeral
 from slack_integration.slack_verify import verify_slack_request_signature
 from slack_integration.views import _resolve_user_for_slack
 from users.models import User
@@ -62,7 +72,45 @@ def _resolve_user_from_payload(payload: dict) -> User | None:
     return user
 
 
-def _run_action(*, user: User, action_id: str, value: str) -> None:
+def _action_value(action: dict) -> str:
+    value = (action.get("value") or "").strip()
+    if value:
+        return value
+    selected = action.get("selected_option") or {}
+    return str(selected.get("value") or "").strip()
+
+
+def _parse_id_pair(value: str) -> tuple[int, int]:
+    left, right = value.split(":", 1)
+    return int(left), int(right)
+
+
+def _run_action(*, user: User, action_id: str, value: str, payload: dict) -> None:
+    if action_id == "closet_request_loan":
+        ask_id, item_id = _parse_id_pair(value)
+        handle_request_loan(user=user, ask_id=ask_id, item_id=item_id)
+        return
+    if action_id == "closet_ask_i_do":
+        handle_i_do(user=user, ask_id=int(value))
+        return
+    if action_id == "closet_ask_i_dont":
+        channel_id = str((payload.get("channel") or {}).get("id") or "").strip()
+        slack_user_id = str((payload.get("user") or {}).get("id") or "").strip()
+        handle_i_dont(user=user, ask_id=int(value), channel_id=channel_id, slack_user_id=slack_user_id)
+        return
+    if action_id == "closet_ask_pick_item":
+        ask_id, item_id = _parse_id_pair(value)
+        handle_pick_item(user=user, ask_id=ask_id, item_id=item_id)
+        return
+    if action_id == "closet_ask_create_item":
+        handle_create_item(user=user, ask_id=int(value))
+        return
+    if action_id == "closet_offer_loan_yes":
+        handle_offer_yes(user=user, offer_id=int(value))
+        return
+    if action_id == "closet_offer_loan_no":
+        handle_offer_no(user=user, offer_id=int(value))
+        return
     if action_id == "closet_approve":
         loan = approve_borrow_request(user=user, borrow_request_id=int(value))
         schedule_closet_slack_notify(notify_borrow_request_approved_to_requester, loan=loan)
@@ -149,16 +197,25 @@ def _handle_block_actions(payload: dict) -> HttpResponse:
         return HttpResponse(status=200)
     action = actions[0]
     action_id = (action.get("action_id") or "").strip()
-    value = (action.get("value") or "").strip()
+    value = _action_value(action)
     if not action_id or not value:
         return HttpResponse(status=200)
 
     user = _resolve_user_from_payload(payload)
     if not user:
+        if action_id.startswith("closet_ask") or action_id == "closet_request_loan":
+            channel_id = str((payload.get("channel") or {}).get("id") or "").strip()
+            slack_user_id = str((payload.get("user") or {}).get("id") or "").strip()
+            if channel_id and slack_user_id:
+                slack_chat_post_ephemeral(
+                    channel=channel_id,
+                    user=slack_user_id,
+                    text="Link your PondArbor account to use Closet in Slack.",
+                )
         return HttpResponse(status=200)
 
     try:
-        _run_action(user=user, action_id=action_id, value=value)
+        _run_action(user=user, action_id=action_id, value=value, payload=payload)
     except (ClosetActionError, FriendActionError, StaffActionError, WhatIfActionError, ContactActionError) as exc:
         notify_slack_action_confirmation(user=user, text=exc.message)
     except Exception:

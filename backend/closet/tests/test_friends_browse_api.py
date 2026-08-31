@@ -105,6 +105,14 @@ class ClosetFriendsBrowseApiTests(ClosetTestMixin, TestCase):
         names = {row["name"] for row in resp.json()["results"]}
         self.assertEqual(names, {"Tools item"})
 
+    def test_friends_browse_filter_by_q_name_or_description(self):
+        self.make_item(owner=self.owner, holder=self.owner, name="Table saw")
+        self.make_item(owner=self.owner, holder=self.owner, name="Cocktail dress")
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?q=table")
+        self.assertEqual(resp.status_code, 200)
+        names = {row["name"] for row in resp.json()["results"]}
+        self.assertEqual(names, {"Table saw"})
+
     def test_friends_browse_filter_by_category_is_case_insensitive(self):
         self.make_item(owner=self.owner, holder=self.owner, name="A", category="Board Games")
         resp = self.borrower_client.get("/api/v1/closet/items/friends/?category=board games")

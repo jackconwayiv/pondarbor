@@ -296,6 +296,8 @@ SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
 SLACK_PROMPTS_CHANNEL_ID = os.getenv("SLACK_PROMPTS_CHANNEL_ID", "").strip()
 # If set, Events API message parsing will only run in this channel. Defaults to SLACK_PROMPTS_CHANNEL_ID.
 SLACK_SONGADAY_CHANNEL_ID = os.getenv("SLACK_SONGADAY_CHANNEL_ID", "").strip()
+# Public #closet channel for borrow-ask ingest. Must differ from Song-a-Day. Invite ArborBot.
+SLACK_CLOSET_CHANNEL_ID = os.getenv("SLACK_CLOSET_CHANNEL_ID", "").strip()
 # Optional: private channel for ingest failure notifications (ops visibility).
 SLACK_DEBUG_CHANNEL_ID = os.getenv("SLACK_DEBUG_CHANNEL_ID", "").strip()
 # Used for Slack “Create account” button. Should point at a page that offers “Sign up with Slack”.

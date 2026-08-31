@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
+from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Exists, OuterRef, Q
 
-from closet.models import BorrowRequest, Item, Loan
+from closet.models import BorrowRequest, ClosetChannelAsk, Item, Loan
 from closet.serializers import _user_summary
 from closet.services import item_fk_owner_publication_eligible_q, owner_eligible_for_closet_publication_q
 from slack_integration.dm_queue import (
@@ -38,6 +39,11 @@ def closet_item_url(item_id: int) -> str:
 
 def closet_home_url() -> str:
     return f"{pondarbor_origin()}/closet?tab=items"
+
+
+def closet_search_url(query: str) -> str:
+    q = quote((query or "").strip())
+    return f"{pondarbor_origin()}/closet?tab=items&q={q}"
 
 
 def closet_user_label(user) -> str:
@@ -632,3 +638,108 @@ def build_loans_summary_blocks(user: User) -> tuple[list[dict], str]:
 
     blocks.append(_actions_row(_link_button(text="Open Closet", url=closet_home_url())))
     return blocks, "Your loans and holdings summary."
+
+
+def _item_loaned_suffix(item: Item) -> str:
+    from closet.actions import item_is_loaned
+
+    return " (loaned)" if item_is_loaned(item) else ""
+
+
+def build_ask_match_blocks(*, ask: ClosetChannelAsk, items: list[Item]) -> tuple[list[dict], str]:
+    text = f":coat: *Closet* — we have matches for *{ask.item_query}*."
+    blocks: list[dict] = [_section(text)]
+    for item in items:
+        line = f"*{item.name}* — {closet_user_label(item.owner_user)}{_item_loaned_suffix(item)}"
+        _append_blocks(
+            blocks,
+            _row_with_open_link(
+                line=line,
+                item_id=item.id,
+                buttons=[
+                    _action_button(
+                        action_id="closet_request_loan",
+                        text="Request loan",
+                        value=f"{ask.id}:{item.id}",
+                        style="primary",
+                    )
+                ],
+            ),
+        )
+    blocks.append(_actions_row(_link_button(text="Open matching items", url=closet_search_url(ask.item_query))))
+    return blocks, text
+
+
+def build_crowd_ask_blocks(*, ask: ClosetChannelAsk) -> tuple[list[dict], str]:
+    qty = f" ({ask.quantity})" if ask.quantity else ""
+    who = closet_user_label(ask.requester_user)
+    text = f":coat: *{who}* is looking for *{ask.item_query}*{qty}. Anyone have one?"
+    blocks = [
+        _section(text),
+        _actions_row(
+            _action_button(action_id="closet_ask_i_do", text="I Do!", value=str(ask.id), style="primary"),
+            _action_button(action_id="closet_ask_i_dont", text="I Don't", value=str(ask.id)),
+        ),
+    ]
+    return blocks, text
+
+
+def build_i_do_picker_blocks(*, ask: ClosetChannelAsk, items: list[Item]) -> tuple[list[dict], str]:
+    text = f"Pick an existing item to offer as *{ask.item_query}*, or create a new listing."
+    options = []
+    for item in items:
+        label = f"{item.name}{_item_loaned_suffix(item)}"[:75]
+        options.append(
+            {
+                "text": {"type": "plain_text", "text": label or "Item"},
+                "value": f"{ask.id}:{item.id}",
+            }
+        )
+    elements: list[dict] = []
+    if options:
+        elements.append(
+            {
+                "type": "static_select",
+                "action_id": "closet_ask_pick_item",
+                "placeholder": {"type": "plain_text", "text": "Pick existing item"},
+                "options": options,
+            }
+        )
+    elements.append(
+        _action_button(action_id="closet_ask_create_item", text="Create new item", value=str(ask.id))
+    )
+    return [_section(text), _actions_row(*elements)], text
+
+
+def build_offer_loan_blocks(*, ask: ClosetChannelAsk, item: Item, offer_id: int) -> tuple[list[dict], str]:
+    who = closet_user_label(ask.requester_user)
+    text = f"Offer a loan of *{item.name}* to *{who}*?"
+    blocks = [
+        _section(text),
+        _actions_row(
+            _action_button(action_id="closet_offer_loan_yes", text="Yes", value=str(offer_id), style="primary"),
+            _action_button(action_id="closet_offer_loan_no", text="No", value=str(offer_id)),
+            _link_button(text="Open in PondArbor", url=closet_item_url(item.id)),
+        ),
+    ]
+    return blocks, text
+
+
+def build_now_in_closet_blocks(*, ask: ClosetChannelAsk, item: Item, can_request: bool) -> tuple[list[dict], str]:
+    owner = closet_user_label(item.owner_user)
+    text = (
+        f":coat: *Closet* — *{item.name}* is now listed by {owner}"
+        f"{_item_loaned_suffix(item)}."
+    )
+    buttons = []
+    if can_request:
+        buttons.append(
+            _action_button(
+                action_id="closet_request_loan",
+                text="Request loan",
+                value=f"{ask.id}:{item.id}",
+                style="primary",
+            )
+        )
+    blocks = _row_with_open_link(line=text, item_id=item.id, buttons=buttons)
+    return blocks, text

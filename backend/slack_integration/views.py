@@ -502,6 +502,26 @@ def slack_events(request):
 
     if not channel_id:
         return JsonResponse({"ok": True})
+
+    closet_channel = (getattr(settings, "SLACK_CLOSET_CHANNEL_ID", None) or "").strip()
+    if closet_channel and channel_id == closet_channel:
+        from slack_integration.closet_ask import handle_closet_channel_message
+
+        ts = str(event.get("ts") or "").strip()
+        thread_ts = str(event.get("thread_ts") or "").strip()
+        try:
+            handle_closet_channel_message(
+                team_id=team_id,
+                channel_id=channel_id,
+                slack_user_id=slack_user_id,
+                text=text,
+                ts=ts,
+                thread_ts=thread_ts,
+            )
+        except Exception:
+            logger.exception("closet channel ingest failed")
+        return JsonResponse({"ok": True})
+
     allowed_channel = _slack_songaday_channel_id()
     if allowed_channel and channel_id != allowed_channel:
         logger.info("slack_events ignored channel=%s allowed=%s", channel_id, allowed_channel)

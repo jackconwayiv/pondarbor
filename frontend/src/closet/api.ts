@@ -132,6 +132,7 @@ export async function fetchFriendsItems(
   options?: {
     category?: string;
     tag?: string;
+    q?: string;
     sort?: FriendsItemsSort;
     includeSelf?: boolean;
   },
@@ -144,6 +145,8 @@ export async function fetchFriendsItems(
   if (category) params.set("category", category);
   const tag = (options?.tag ?? "").trim();
   if (tag) params.set("tag", tag);
+  const q = (options?.q ?? "").trim();
+  if (q) params.set("q", q);
   if (options?.sort) params.set("sort", options.sort);
   if (options?.includeSelf) params.set("include_self", "true");
 
@@ -206,6 +209,7 @@ export async function fetchClosetBootstrap(
     pageSize: number;
     category?: string;
     tag?: string;
+    q?: string;
     sort?: FriendsItemsSort;
     includeSelf?: boolean;
   },
@@ -218,6 +222,8 @@ export async function fetchClosetBootstrap(
   if (category) params.set("category", category);
   const tag = (options.tag ?? "").trim();
   if (tag) params.set("tag", tag);
+  const q = (options.q ?? "").trim();
+  if (q) params.set("q", q);
   if (options.sort) params.set("sort", options.sort);
   if (options.includeSelf) params.set("include_self", "true");
   const response = await closetFetch(

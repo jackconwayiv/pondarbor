@@ -1,0 +1,316 @@
+"""Heuristic parser and close-match scorer for #closet Slack asks."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import date, timedelta
+from difflib import SequenceMatcher
+
+_WORD_QTY = {
+    "a": 1,
+    "an": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+
+_WEEKDAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
+_STOP = frozenset({"a", "an", "the", "some", "any", "of", "please", "pls"})
+
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_COLLAPSE_RE = re.compile(r"[^a-z0-9]+")
+
+_DATE_BY_ISO = re.compile(
+    r"\b(?:needed\s+by|need\s+(?:it\s+)?by|by)\s+(\d{4}-\d{2}-\d{2})\b",
+    re.I,
+)
+_DATE_BY_MDY = re.compile(
+    r"\b(?:needed\s+by|need\s+(?:it\s+)?by|by)\s+(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b",
+    re.I,
+)
+_DATE_BY_WEEKDAY = re.compile(
+    r"\b(?:needed\s+by|need\s+(?:it\s+)?by|by)\s+(?:next\s+)?("
+    + "|".join(_WEEKDAYS)
+    + r")\b",
+    re.I,
+)
+_DATE_BY_TOMORROW = re.compile(
+    r"\b(?:needed\s+by|need\s+(?:it\s+)?by|by)\s+tomorrow\b",
+    re.I,
+)
+_DATE_BY_TODAY = re.compile(
+    r"\b(?:needed\s+by|need\s+(?:it\s+)?by|by)\s+today\b",
+    re.I,
+)
+
+_QTY_TRAILING = re.compile(
+    r"[.!?]\s*i\s+need\s+(\d+|" + "|".join(_WORD_QTY) + r")\b",
+    re.I,
+)
+_QTY_NEED_N = re.compile(
+    r"\bneed(?:ed)?\s+(\d+|" + "|".join(k for k in _WORD_QTY if k not in {"a", "an"}) + r")\b",
+    re.I,
+)
+
+_ASK_PATTERNS = (
+    re.compile(
+        r"(?:does|do)\s+anyone\s+(?:have|has|got)\s+(?:a |an |the |some |any )?(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
+        r"who(?:'s|’s)?\s+(?:has|got|have)\s+(?:a |an |the |some |any )?(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:can|could|may)\s+i\s+borrow\s+(?:(?P<qty>\d+|"
+        + "|".join(_WORD_QTY)
+        + r")\s+)?(?:a |an |the |some )?(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
+        r"i\s+need\s+to\s+borrow\s+(?:(?P<qty>\d+|"
+        + "|".join(_WORD_QTY)
+        + r")\s+)?(?:a |an |the |some )?(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:looking\s+for|anybody\s+have|anyone\s+have)\s+(?:a |an |the |some |any )?(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
+        r"i\s+need\s+(?:(?P<qty>\d+|"
+        + "|".join(_WORD_QTY)
+        + r")\s+)?(?:a |an |the |some )?(?P<item>.+)",
+        re.I,
+    ),
+)
+
+MATCH_SCORE_THRESHOLD = 0.42
+MATCH_LIMIT = 5
+
+
+@dataclass(frozen=True)
+class ClosetAskParse:
+    item_query: str
+    quantity: int | None
+    date_needed_by: date | None
+    raw_text: str
+
+
+def parse_closet_ask(text: str, *, today: date | None = None) -> ClosetAskParse | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    today = today or date.today()
+    working, needed_by = _extract_need_by(raw, today=today)
+    working, qty_from_tail = _extract_trailing_quantity(working)
+    match = _match_ask(working)
+    if not match:
+        return None
+    item_raw = (match.group("item") or "").strip()
+    qty_from_pat = None
+    if "qty" in match.re.groupindex:
+        qty_from_pat = _parse_qty_token(match.group("qty"))
+    item_query, qty_from_item = _clean_item_phrase(item_raw)
+    if not item_query:
+        return None
+    quantity = qty_from_pat or qty_from_item or qty_from_tail
+    return ClosetAskParse(
+        item_query=item_query,
+        quantity=quantity,
+        date_needed_by=needed_by,
+        raw_text=raw,
+    )
+
+
+def tokenize_query(text: str) -> set[str]:
+    return {t for t in _TOKEN_RE.findall((text or "").casefold()) if t not in _STOP and len(t) > 1}
+
+
+def collapse_alnum(text: str) -> str:
+    return _COLLAPSE_RE.sub("", (text or "").casefold())
+
+
+def score_item_for_query(query: str, *, name: str, description: str = "", tags: list | None = None) -> float:
+    q = (query or "").strip()
+    n = (name or "").strip()
+    if not q or not n:
+        return 0.0
+    q_cf = q.casefold()
+    n_cf = n.casefold()
+    if q_cf == n_cf:
+        return 1.0
+    q_c = collapse_alnum(q)
+    n_c = collapse_alnum(n)
+    if q_c and n_c and (q_c == n_c or q_c in n_c or n_c in q_c):
+        return 0.92
+    q_tokens = tokenize_query(q)
+    n_tokens = tokenize_query(n)
+    if q_tokens and q_tokens <= n_tokens:
+        return 0.85
+    hay_tokens = n_tokens | tokenize_query(description) | tokenize_query(" ".join(tags or []))
+    overlap = (len(q_tokens & n_tokens) / len(q_tokens)) if q_tokens else 0.0
+    overlap_hay = (len(q_tokens & hay_tokens) / len(q_tokens)) if q_tokens else 0.0
+    ratio = SequenceMatcher(None, q_cf, n_cf).ratio()
+    return max(overlap * 0.72, overlap_hay * 0.55, ratio * 0.65)
+
+
+def score_closet_items_for_query(query: str, items, *, limit: int = MATCH_LIMIT, threshold: float = MATCH_SCORE_THRESHOLD):
+    """Return items with score >= threshold, highest first, capped at limit."""
+    ranked: list[tuple[float, object]] = []
+    for item in items:
+        tags = getattr(item, "tags", None) or []
+        if not isinstance(tags, list):
+            tags = []
+        score = score_item_for_query(
+            query,
+            name=getattr(item, "name", "") or "",
+            description=getattr(item, "description", "") or "",
+            tags=tags,
+        )
+        if score >= threshold:
+            ranked.append((score, item))
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    return [item for _, item in ranked[:limit]]
+
+
+def _match_ask(text: str) -> re.Match[str] | None:
+    for pat in _ASK_PATTERNS:
+        m = pat.search(text)
+        if m:
+            return m
+    return None
+
+
+def _parse_qty_token(raw: str | None) -> int | None:
+    if not raw:
+        return None
+    token = raw.strip().casefold()
+    if token.isdigit():
+        n = int(token)
+        return n if n > 0 else None
+    return _WORD_QTY.get(token)
+
+
+def _clean_item_phrase(phrase: str) -> tuple[str, int | None]:
+    s = (phrase or "").strip()
+    s = s.split("?")[0].split("!")[0]
+    s = re.split(r"\s+i\s+need\b", s, maxsplit=1, flags=re.I)[0]
+    s = re.split(r"\bneeded\s+by\b", s, maxsplit=1, flags=re.I)[0]
+    s = s.strip(" .,;:-")
+    qty = None
+    leading = re.match(
+        r"^(\d+|" + "|".join(_WORD_QTY) + r")\s+(?:of\s+)?(.+)$",
+        s,
+        re.I,
+    )
+    if leading:
+        qty = _parse_qty_token(leading.group(1))
+        s = leading.group(2).strip()
+        s = re.sub(r"^(?:a|an|the|some|any)\s+", "", s, flags=re.I)
+        if s.casefold().startswith("to "):
+            return "", qty
+    s = re.sub(r"\s+", " ", s).strip(" .,;:-")
+    if len(s) < 3:
+        return "", qty
+    if s.casefold() in _STOP:
+        return "", qty
+    return s, qty
+
+
+def _extract_trailing_quantity(text: str) -> tuple[str, int | None]:
+    m = _QTY_TRAILING.search(text)
+    if m:
+        qty = _parse_qty_token(m.group(1))
+        stripped = (text[: m.start()] + " " + text[m.end() :]).strip()
+        return stripped, qty
+    m2 = _QTY_NEED_N.search(text)
+    if m2 and not re.search(r"\bi\s+need\s+to\s+borrow\b", text, re.I):
+        # Avoid treating "I need to borrow 3 camping chairs" twice; leading qty is in the ask pattern.
+        if re.search(r"\b(?:borrow|have)\b", text, re.I) and m2.start() < 12:
+            return text, None
+        qty = _parse_qty_token(m2.group(1))
+        return text, qty
+    return text, None
+
+
+def _extract_need_by(text: str, *, today: date) -> tuple[str, date | None]:
+    needed: date | None = None
+    working = text
+
+    def _clip(m: re.Match[str], parsed: date | None) -> str:
+        nonlocal needed
+        if parsed is not None and needed is None:
+            needed = parsed
+        return (working[: m.start()] + " " + working[m.end() :]).strip()
+
+    m = _DATE_BY_ISO.search(working)
+    if m:
+        working = _clip(m, _parse_iso(m.group(1)))
+    m = _DATE_BY_MDY.search(working)
+    if m:
+        working = _clip(m, _parse_mdy(m.group(1), today=today))
+    m = _DATE_BY_WEEKDAY.search(working)
+    if m:
+        working = _clip(m, _next_weekday(today, m.group(1).casefold()))
+    m = _DATE_BY_TOMORROW.search(working)
+    if m:
+        working = _clip(m, today + timedelta(days=1))
+    m = _DATE_BY_TODAY.search(working)
+    if m:
+        working = _clip(m, today)
+    if needed is not None and needed < today:
+        needed = today
+    return working, needed
+
+
+def _parse_iso(raw: str) -> date | None:
+    try:
+        parts = [int(p) for p in raw.split("-")]
+        return date(parts[0], parts[1], parts[2])
+    except (ValueError, IndexError):
+        return None
+
+
+def _parse_mdy(raw: str, *, today: date) -> date | None:
+    bits = raw.split("/")
+    try:
+        month = int(bits[0])
+        day = int(bits[1])
+        if len(bits) == 3:
+            year = int(bits[2])
+            if year < 100:
+                year += 2000
+        else:
+            year = today.year
+        parsed = date(year, month, day)
+        if len(bits) == 2 and parsed < today:
+            parsed = date(year + 1, month, day)
+        return parsed
+    except ValueError:
+        return None
+
+
+def _next_weekday(today: date, name: str) -> date:
+    target = _WEEKDAYS.index(name)
+    delta = (target - today.weekday()) % 7
+    return today + timedelta(days=delta)

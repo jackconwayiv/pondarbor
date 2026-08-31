@@ -18,6 +18,7 @@ def slack_chat_post_message(
     channel: str,
     text: str,
     blocks: list[dict[str, Any]] | None = None,
+    thread_ts: str | None = None,
 ) -> dict[str, Any]:
     token = _slack_bot_token()
     if not token:
@@ -25,6 +26,8 @@ def slack_chat_post_message(
     body: dict[str, Any] = {"channel": channel, "text": text}
     if blocks:
         body["blocks"] = blocks
+    if thread_ts:
+        body["thread_ts"] = thread_ts
     r = requests.post(
         f"{_SLACK_API}/chat.postMessage",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
@@ -93,6 +96,7 @@ def slack_chat_post_ephemeral(
     user: str,
     text: str,
     blocks: list[dict[str, Any]] | None = None,
+    thread_ts: str | None = None,
 ) -> dict[str, Any]:
     token = _slack_bot_token()
     if not token:
@@ -100,6 +104,8 @@ def slack_chat_post_ephemeral(
     body: dict[str, Any] = {"channel": channel, "user": user, "text": text}
     if blocks:
         body["blocks"] = blocks
+    if thread_ts:
+        body["thread_ts"] = thread_ts
     r = requests.post(
         f"{_SLACK_API}/chat.postEphemeral",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},

@@ -76,6 +76,10 @@ class SlackSongadayIngestTrace(models.Model):
         already_submitted = "already_submitted", "Already submitted"
         saved = "saved", "Saved"
         exception = "exception", "Exception"
+        closet_posted = "closet_posted", "Closet ask posted"
+        closet_skip = "closet_skip", "Closet ask skipped"
+        closet_unlinked = "closet_unlinked", "Closet unlinked user"
+        closet_post_failed = "closet_post_failed", "Closet channel post failed"
 
     created_at = models.DateTimeField(auto_now_add=True)
 

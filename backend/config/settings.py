@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -291,15 +292,22 @@ CONTACT_INBOX_EMAIL = os.getenv("CONTACT_INBOX_EMAIL", "pondarbor@gmail.com").st
 # Slack (Song-a-day): ArborBot credentials only — signing secret + bot token for `/song`, Events, posts.
 # Auth0 “Sign in with Slack” uses a separate Slack app (e.g. pondarbor.com login); those OAuth
 # credentials belong in Auth0, not here. Frontend: set VITE_AUTH0_SLACK_CONNECTION for the login button.
+def _env_slack_channel_id(key: str) -> str:
+    raw = os.getenv(key, "").strip().strip('"').strip("'")
+    raw = raw.replace("\u200b", "").replace("\ufeff", "")
+    m = re.search(r"[CGD][A-Z0-9]{8,}", raw.upper())
+    return m.group(0) if m else raw
+
+
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "").strip()
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
-SLACK_PROMPTS_CHANNEL_ID = os.getenv("SLACK_PROMPTS_CHANNEL_ID", "").strip()
+SLACK_PROMPTS_CHANNEL_ID = _env_slack_channel_id("SLACK_PROMPTS_CHANNEL_ID")
 # If set, Events API message parsing will only run in this channel. Defaults to SLACK_PROMPTS_CHANNEL_ID.
-SLACK_SONGADAY_CHANNEL_ID = os.getenv("SLACK_SONGADAY_CHANNEL_ID", "").strip()
+SLACK_SONGADAY_CHANNEL_ID = _env_slack_channel_id("SLACK_SONGADAY_CHANNEL_ID")
 # Public #closet channel for borrow-ask ingest. Must differ from Song-a-Day. Invite ArborBot.
-SLACK_CLOSET_CHANNEL_ID = os.getenv("SLACK_CLOSET_CHANNEL_ID", "").strip()
+SLACK_CLOSET_CHANNEL_ID = _env_slack_channel_id("SLACK_CLOSET_CHANNEL_ID")
 # Optional: private channel for ingest failure notifications (ops visibility).
-SLACK_DEBUG_CHANNEL_ID = os.getenv("SLACK_DEBUG_CHANNEL_ID", "").strip()
+SLACK_DEBUG_CHANNEL_ID = _env_slack_channel_id("SLACK_DEBUG_CHANNEL_ID")
 # Used for Slack “Create account” button. Should point at a page that offers “Sign up with Slack”.
 SLACK_CREATE_ACCOUNT_URL = os.getenv("SLACK_CREATE_ACCOUNT_URL", "https://www.pondarbor.com/").strip()
 SONGADAY_SLACK_PROMPT_TIMEZONE = os.getenv("SONGADAY_SLACK_PROMPT_TIMEZONE", "UTC").strip()

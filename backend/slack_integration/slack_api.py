@@ -19,6 +19,7 @@ def slack_chat_post_message(
     text: str,
     blocks: list[dict[str, Any]] | None = None,
     thread_ts: str | None = None,
+    reply_broadcast: bool = False,
 ) -> dict[str, Any]:
     token = _slack_bot_token()
     if not token:
@@ -28,6 +29,8 @@ def slack_chat_post_message(
         body["blocks"] = blocks
     if thread_ts:
         body["thread_ts"] = thread_ts
+        if reply_broadcast:
+            body["reply_broadcast"] = True
     r = requests.post(
         f"{_SLACK_API}/chat.postMessage",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},

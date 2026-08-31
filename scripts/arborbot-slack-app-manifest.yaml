@@ -67,6 +67,7 @@ oauth_config:
     bot:
       - chat:write
       - channels:history
+      - groups:history
       - commands
       - im:write
       - users:read
@@ -80,6 +81,7 @@ settings:
     request_url: https://www.pondarbor.com/api/v1/slack/events/
     bot_events:
       - message.channels
+      - message.groups
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false

@@ -51,9 +51,10 @@ def handle_closet_channel_message(
     text: str,
     ts: str,
     thread_ts: str,
-) -> None:
+) -> str:
     if thread_ts and ts and thread_ts != ts:
-        return
+        logger.info("closet ingest skip thread_reply channel=%s", channel_id)
+        return "skip_thread_reply"
 
     from slack_integration.views import _resolve_user_for_slack
 
@@ -63,9 +64,9 @@ def handle_closet_channel_message(
     if parsed:
         if err or not user:
             _ephemeral_unlinked(channel_id, slack_user_id, err)
-            return
+            return "unlinked"
         if not _user_can_ask(user, slack_user_id=slack_user_id, channel_id=channel_id):
-            return
+            return "skip_pending"
         item_query = parsed.item_query[:255]
         quantity = parsed.quantity
         raw_text = parsed.raw_text[:4000]
@@ -73,20 +74,37 @@ def handle_closet_channel_message(
         matches = _friend_matches_for_ask(user=user, query=item_query, message=text)
     else:
         if err or not user:
-            return
+            logger.info("closet ingest skip unparsed_unlinked channel=%s user=%s", channel_id, slack_user_id)
+            return "skip_unparsed_unlinked"
         if user.account_status != User.AccountStatus.APPROVED:
-            return
+            return "skip_pending"
         if looks_like_chatter(text):
-            return
+            logger.info("closet ingest skip chatter channel=%s text=%r", channel_id, (text or "")[:120])
+            return "skip_chatter"
         matches = _friend_matches_for_ask(user=user, query="", message=text)
         if not matches:
-            return
+            logger.info("closet ingest skip no_parse_no_matches channel=%s text=%r", channel_id, (text or "")[:120])
+            slack_chat_post_ephemeral(
+                channel=channel_id,
+                user=slack_user_id,
+                text=(
+                    "ArborBot is listening, but that didn't look like a borrow ask and nothing in "
+                    "friends' closets matched. Try: *Does anyone have a …?*"
+                ),
+            )
+            return "skip_no_parse_no_matches"
         item_query = item_query_from_message_matches(text, matches)[:255]
         if not item_query:
-            return
+            return "skip_no_query"
         quantity = None
         raw_text = (text or "").strip()[:4000]
         date_needed_by = timezone.localdate()
+
+    if ts and ClosetChannelAsk.objects.filter(
+        slack_channel_id=channel_id[:32],
+        slack_message_ts=ts[:32],
+    ).exists():
+        return "skip_duplicate_ask"
 
     ask = ClosetChannelAsk.objects.create(
         requester_user=user,
@@ -111,6 +129,13 @@ def handle_closet_channel_message(
         )
         if not resp.get("ok"):
             logger.warning("closet ask ephemeral matches failed: %s", resp)
+    else:
+        slack_chat_post_ephemeral(
+            channel=channel_id,
+            user=slack_user_id,
+            text="No matching items in friends' closets yet. Asked the channel below.",
+            thread_ts=ts or None,
+        )
 
     crowd_blocks, crowd_text = build_crowd_ask_blocks(ask=ask)
     posted = slack_chat_post_message(
@@ -118,14 +143,32 @@ def handle_closet_channel_message(
         text=crowd_text,
         blocks=crowd_blocks,
         thread_ts=ts or None,
+        reply_broadcast=True,
     )
     if posted.get("ok"):
         prompt_ts = str(posted.get("ts") or "").strip()
         if prompt_ts:
             ask.slack_prompt_ts = prompt_ts[:32]
             ask.save(update_fields=["slack_prompt_ts", "updated_at"])
-    else:
-        logger.warning("closet ask crowd post failed: %s", posted)
+        logger.info(
+            "closet ask posted channel=%s ask_id=%s matches=%s query=%r",
+            channel_id,
+            ask.id,
+            len(matches),
+            ask.item_query,
+        )
+        return "posted"
+    err = str(posted.get("error") or "unknown")
+    logger.warning("closet ask crowd post failed: %s", posted)
+    slack_chat_post_ephemeral(
+        channel=channel_id,
+        user=slack_user_id,
+        text=(
+            f"ArborBot heard your ask for *{ask.item_query}* but couldn't post in this channel "
+            f"(`{err}`). Invite @ArborBot to the channel and check `SLACK_CLOSET_CHANNEL_ID`."
+        ),
+    )
+    return "post_failed"
 
 
 def handle_request_loan(*, user: User, ask_id: int, item_id: int) -> None:

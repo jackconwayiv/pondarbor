@@ -1,7 +1,7 @@
 import json
 from unittest import mock
 
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.test.utils import override_settings
 
 from closet.models import BorrowRequest, ClosetChannelAsk, ClosetChannelAskOffer, Item, Loan
@@ -106,6 +106,7 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
         mock_post.assert_called()
         crowd_kwargs = mock_post.call_args.kwargs
         self.assertIn("I Do", json.dumps(crowd_kwargs["blocks"]))
+        self.assertTrue(crowd_kwargs.get("reply_broadcast"))
         dm_blocks = json.dumps(mock_dm.call_args.kwargs["blocks"])
         self.assertIn("Request loan", dm_blocks)
         self.assertNotIn(" (loaned)", dm_blocks)
@@ -138,8 +139,10 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
                 secret="test_secret",
             )
         mock_dm.assert_not_called()
-        mock_eph.assert_not_called()
+        mock_eph.assert_called()
+        self.assertIn("No matching items", mock_eph.call_args.kwargs["text"])
         mock_post.assert_called_once()
+        self.assertTrue(mock_post.call_args.kwargs.get("reply_broadcast"))
         self.assertEqual(ClosetChannelAsk.objects.count(), 1)
 
     def test_unlinked_user_gets_ephemeral_no_ask(self):
@@ -212,6 +215,70 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
         mock_post.assert_not_called()
         mock_dm.assert_not_called()
         self.assertEqual(ClosetChannelAsk.objects.count(), 0)
+
+    def test_file_share_caption_is_still_an_ask(self):
+        body = _closet_message_body(text="Does anyone have a table saw?")
+        body["event"]["subtype"] = "file_share"
+        with (
+            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
+            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}),
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm"),
+        ):
+            _post_events(client=self.client, body=body, secret="test_secret")
+        self.assertEqual(ClosetChannelAsk.objects.count(), 1)
+        mock_post.assert_called()
+
+    @override_settings(SLACK_CLOSET_CHANNEL_ID="https://pondarbor.slack.com/archives/C0123456789")
+    def test_closet_channel_id_extracted_from_archive_url(self):
+        body = _closet_message_body(text="Does anyone have a table saw?")
+        body["event"]["channel"] = "C0123456789"
+        with (
+            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
+            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}),
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm"),
+        ):
+            _post_events(client=self.client, body=body, secret="test_secret")
+        self.assertEqual(ClosetChannelAsk.objects.count(), 1)
+        mock_post.assert_called()
+
+    def test_unrecognized_text_gets_ephemeral_not_channel_post(self):
+        with (
+            mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
+            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}) as mock_eph,
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
+        ):
+            _post_events(
+                client=self.client,
+                body=_closet_message_body(text="thinking about weekend plans"),
+                secret="test_secret",
+            )
+        mock_post.assert_not_called()
+        mock_dm.assert_not_called()
+        mock_eph.assert_called()
+        self.assertIn("didn't look like a borrow ask", mock_eph.call_args.kwargs["text"])
+        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
+
+    def test_rich_text_blocks_without_text_field_still_parse(self):
+        body = _closet_message_body(text="")
+        body["event"]["blocks"] = [
+            {
+                "type": "rich_text",
+                "elements": [
+                    {
+                        "type": "rich_text_section",
+                        "elements": [{"type": "text", "text": "Does anyone have a table saw?"}],
+                    }
+                ],
+            }
+        ]
+        with (
+            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
+            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}),
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm"),
+        ):
+            _post_events(client=self.client, body=body, secret="test_secret")
+        self.assertEqual(ClosetChannelAsk.objects.count(), 1)
+        mock_post.assert_called()
 
 
 @override_settings(
@@ -410,3 +477,33 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         mock_eph.assert_called()
         self.assertEqual(mock_eph.call_args.kwargs["text"], "Okay.")
+
+
+class SlackChannelIdNormalizeTests(SimpleTestCase):
+    def test_extracts_id_from_archive_url_and_quotes(self):
+        from slack_integration.slack_ids import normalize_slack_channel_id
+
+        self.assertEqual(
+            normalize_slack_channel_id("https://pondarbor.slack.com/archives/C0123456789"),
+            "C0123456789",
+        )
+        self.assertEqual(normalize_slack_channel_id('"C0123456789"'), "C0123456789")
+
+    def test_plain_text_from_rich_text_blocks(self):
+        from slack_integration.slack_event_text import slack_event_plain_text
+
+        event = {
+            "text": "",
+            "blocks": [
+                {
+                    "type": "rich_text",
+                    "elements": [
+                        {
+                            "type": "rich_text_section",
+                            "elements": [{"type": "text", "text": "Does anyone have a ladder?"}],
+                        }
+                    ],
+                }
+            ],
+        }
+        self.assertEqual(slack_event_plain_text(event), "Does anyone have a ladder?")

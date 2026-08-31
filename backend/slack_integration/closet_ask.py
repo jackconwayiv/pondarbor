@@ -15,7 +15,14 @@ from closet.actions import (
 )
 from closet.models import ClosetChannelAsk, ClosetChannelAskOffer, Item
 from closet.services import owner_eligible_for_closet_publication_q
-from closet.slack_ask_parse import parse_closet_ask, score_closet_items_for_query
+from closet.slack_ask_parse import (
+    item_query_from_message_matches,
+    looks_like_chatter,
+    merge_scored_item_lists,
+    parse_closet_ask,
+    score_closet_items_for_message,
+    score_closet_items_for_query,
+)
 from closet.slack_hooks import schedule_closet_slack_notify
 from closet.slack_notify import (
     build_ask_match_blocks,
@@ -47,37 +54,51 @@ def handle_closet_channel_message(
 ) -> None:
     if thread_ts and ts and thread_ts != ts:
         return
-    parsed = parse_closet_ask(text, today=timezone.localdate())
-    if not parsed:
-        return
 
     from slack_integration.views import _resolve_user_for_slack
 
+    parsed = parse_closet_ask(text, today=timezone.localdate())
     user, err = _resolve_user_for_slack(team_id, slack_user_id)
-    if err or not user:
-        _ephemeral_unlinked(channel_id, slack_user_id, err)
-        return
-    if user.account_status != User.AccountStatus.APPROVED:
-        slack_chat_post_ephemeral(
-            channel=channel_id,
-            user=slack_user_id,
-            text="Your PondArbor account is still pending approval.",
-        )
-        return
+
+    if parsed:
+        if err or not user:
+            _ephemeral_unlinked(channel_id, slack_user_id, err)
+            return
+        if not _user_can_ask(user, slack_user_id=slack_user_id, channel_id=channel_id):
+            return
+        item_query = parsed.item_query[:255]
+        quantity = parsed.quantity
+        raw_text = parsed.raw_text[:4000]
+        date_needed_by = parsed.date_needed_by or timezone.localdate()
+        matches = _friend_matches_for_ask(user=user, query=item_query, message=text)
+    else:
+        if err or not user:
+            return
+        if user.account_status != User.AccountStatus.APPROVED:
+            return
+        if looks_like_chatter(text):
+            return
+        matches = _friend_matches_for_ask(user=user, query="", message=text)
+        if not matches:
+            return
+        item_query = item_query_from_message_matches(text, matches)[:255]
+        if not item_query:
+            return
+        quantity = None
+        raw_text = (text or "").strip()[:4000]
+        date_needed_by = timezone.localdate()
 
     ask = ClosetChannelAsk.objects.create(
         requester_user=user,
-        item_query=parsed.item_query[:255],
-        quantity=parsed.quantity,
-        raw_text=parsed.raw_text[:4000],
-        date_needed_by=parsed.date_needed_by or timezone.localdate(),
+        item_query=item_query,
+        quantity=quantity,
+        raw_text=raw_text,
+        date_needed_by=date_needed_by,
         slack_team_id=team_id[:32],
         slack_channel_id=channel_id[:32],
         slack_message_ts=(ts or "")[:32],
         status=ClosetChannelAsk.Status.OPEN,
     )
-
-    matches = _friend_matches_for_ask(user=user, query=ask.item_query)
     if matches:
         blocks, summary = build_ask_match_blocks(ask=ask, items=matches)
         notify_pondarbor_user_dm(user, text=summary, blocks=blocks, rate="immediate")
@@ -256,7 +277,18 @@ def _notify_requester_now_in_closet(ask: ClosetChannelAsk, item: Item) -> None:
     notify_pondarbor_user_dm(ask.requester_user, text=text, blocks=blocks, rate="immediate")
 
 
-def _friend_matches_for_ask(*, user: User, query: str) -> list[Item]:
+def _user_can_ask(user: User, *, slack_user_id: str, channel_id: str) -> bool:
+    if user.account_status == User.AccountStatus.APPROVED:
+        return True
+    slack_chat_post_ephemeral(
+        channel=channel_id,
+        user=slack_user_id,
+        text="Your PondArbor account is still pending approval.",
+    )
+    return False
+
+
+def _friend_matches_for_ask(*, user: User, query: str, message: str = "") -> list[Item]:
     friend_ids = friend_ids_for_user(user=user)
     if not friend_ids:
         return []
@@ -267,7 +299,9 @@ def _friend_matches_for_ask(*, user: User, query: str) -> list[Item]:
         .exclude(owner_user=user)
         .select_related("owner_user__profile", "current_holder_user__profile")
     )
-    return score_closet_items_for_query(query, items)
+    from_query = score_closet_items_for_query(query, items) if (query or "").strip() else []
+    from_message = score_closet_items_for_message(message, items) if (message or "").strip() else []
+    return merge_scored_item_lists(from_query, from_message)
 
 
 def _owned_items(user: User) -> list[Item]:

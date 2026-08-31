@@ -36,6 +36,101 @@ _WEEKDAYS = (
 
 _STOP = frozenset({"a", "an", "the", "some", "any", "of", "please", "pls"})
 
+# Filler for inventory scans of the raw Slack message (not for extracted item phrases).
+_SCAN_STOP = _STOP | frozenset(
+    {
+        "does",
+        "do",
+        "did",
+        "can",
+        "could",
+        "may",
+        "would",
+        "anyone",
+        "anybody",
+        "someone",
+        "somebody",
+        "everyone",
+        "everybody",
+        "have",
+        "has",
+        "had",
+        "got",
+        "get",
+        "getting",
+        "i",
+        "we",
+        "you",
+        "they",
+        "my",
+        "our",
+        "your",
+        "borrow",
+        "borrowing",
+        "loan",
+        "loaning",
+        "need",
+        "needed",
+        "looking",
+        "request",
+        "for",
+        "from",
+        "with",
+        "about",
+        "who",
+        "what",
+        "where",
+        "when",
+        "how",
+        "to",
+        "in",
+        "on",
+        "at",
+        "by",
+        "it",
+        "this",
+        "that",
+        "and",
+        "or",
+        "but",
+        "if",
+        "so",
+        "just",
+        "also",
+        "still",
+        "very",
+        "really",
+        "thanks",
+        "thank",
+        "thx",
+        "please",
+        "pls",
+        "hey",
+        "hi",
+        "hello",
+        "ok",
+        "okay",
+        "yeah",
+        "yes",
+        "nope",
+        "lol",
+    }
+)
+
+_CHATTER_RE = re.compile(
+    r"^\s*(?:thanks|thank you|thx|ty|cheers|good morning|good night|gm|gn|"
+    r"lol|lmao|haha|ok|okay|sounds good|got it|never ?mind|nm)[\s!.]*$",
+    re.I,
+)
+_NOT_ASK_RE = re.compile(
+    r"\b(?:returned|returning|brought back|dropping off|dropped off)\b",
+    re.I,
+)
+
+# Unigram vs a multi-word item name: skip short generic overlaps like "table" → "table saw".
+_UNIGRAM_MULTIWORD_MIN_LEN = 6
+_UNIGRAM_MULTIWORD_MIN_FRAC = 0.7
+
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _COLLAPSE_RE = re.compile(r"[^a-z0-9]+")
 
@@ -73,7 +168,7 @@ _QTY_NEED_N = re.compile(
 
 _ASK_PATTERNS = (
     re.compile(
-        r"(?:does|do)\s+anyone\s+(?:have|has|got)\s+(?:a |an |the |some |any )?(?P<item>.+)",
+        r"(?:(?:does|do|has|have)\s+)?(?:any(?:one|body))\s+(?:have|has|got)\s+(?:a |an |the |some |any )?(?P<item>.+)",
         re.I,
     ),
     re.compile(
@@ -93,7 +188,15 @@ _ASK_PATTERNS = (
         re.I,
     ),
     re.compile(
-        r"(?:looking\s+for|anybody\s+have|anyone\s+have)\s+(?:a |an |the |some |any )?(?P<item>.+)",
+        r"borrow\s+request\s+for\s+(?:a |an |the |some |any )?(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
+        r"^borrow\s*:\s*(?:a |an |the |some |any )?(?P<item>.+)",
+        re.I,
+    ),
+    re.compile(
+        r"looking\s+for\s+(?:a |an |the |some |any )?(?P<item>.+)",
         re.I,
     ),
     re.compile(
@@ -193,6 +296,134 @@ def score_closet_items_for_query(query: str, items, *, limit: int = MATCH_LIMIT,
     return [item for _, item in ranked[:limit]]
 
 
+def looks_like_chatter(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return True
+    if _CHATTER_RE.match(raw):
+        return True
+    if _NOT_ASK_RE.search(raw):
+        return True
+    if not slack_message_tokens(raw):
+        return True
+    return False
+
+
+def slack_message_tokens(text: str) -> list[str]:
+    seen: list[str] = []
+    for token in _TOKEN_RE.findall((text or "").casefold()):
+        if token in _SCAN_STOP or len(token) < 2:
+            continue
+        if token not in seen:
+            seen.append(token)
+    return seen
+
+
+def slack_message_terms(text: str) -> list[str]:
+    """Unigrams plus adjacent bigrams/trigrams from the Slack message, minus filler."""
+    ordered = [t for t in _TOKEN_RE.findall((text or "").casefold()) if t not in _SCAN_STOP and len(t) > 1]
+    terms: list[str] = []
+    for token in ordered:
+        if token not in terms:
+            terms.append(token)
+    for n in (2, 3):
+        for i in range(len(ordered) - n + 1):
+            phrase = " ".join(ordered[i : i + n])
+            if phrase not in terms:
+                terms.append(phrase)
+    return terms
+
+
+def score_item_for_scan_term(term: str, *, name: str, description: str = "", tags: list | None = None) -> float:
+    """Score one Slack word/phrase against an item; unigrams cannot weakly hit multi-word names."""
+    term = (term or "").strip()
+    name = (name or "").strip()
+    if not term or not name:
+        return 0.0
+    base = score_item_for_query(term, name=name, description=description, tags=tags)
+    if " " in term:
+        return base
+    name_tokens = tokenize_query(name)
+    if len(name_tokens) <= 1:
+        return base
+    collapsed_term = collapse_alnum(term)
+    collapsed_name = collapse_alnum(name)
+    if not collapsed_term or not collapsed_name or collapsed_term not in collapsed_name:
+        return 0.0
+    frac = len(collapsed_term) / len(collapsed_name)
+    if len(collapsed_term) >= _UNIGRAM_MULTIWORD_MIN_LEN or frac >= _UNIGRAM_MULTIWORD_MIN_FRAC:
+        return base
+    return 0.0
+
+
+def score_closet_items_for_message(
+    text: str,
+    items,
+    *,
+    limit: int = MATCH_LIMIT,
+    threshold: float = MATCH_SCORE_THRESHOLD,
+):
+    """Scan each significant word/n-gram in `text` against closet item names."""
+    terms = slack_message_terms(text)
+    if not terms:
+        return []
+    ranked: list[tuple[float, object]] = []
+    for item in items:
+        tags = getattr(item, "tags", None) or []
+        if not isinstance(tags, list):
+            tags = []
+        name = getattr(item, "name", "") or ""
+        description = getattr(item, "description", "") or ""
+        best = 0.0
+        for term in terms:
+            best = max(
+                best,
+                score_item_for_scan_term(term, name=name, description=description, tags=tags),
+            )
+        if best >= threshold:
+            ranked.append((best, item))
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    return [item for _, item in ranked[:limit]]
+
+
+def merge_scored_item_lists(*groups, limit: int = MATCH_LIMIT) -> list:
+    """Dedupe items preserving the first-seen order of highest-priority groups."""
+    seen: set[int] = set()
+    out: list = []
+    for group in groups:
+        for item in group:
+            key = id(item)
+            ident = getattr(item, "id", None)
+            key = ident if ident is not None else key
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def item_query_from_message_matches(text: str, items) -> str:
+    """Best Slack n-gram that hit the top match; fallback to that item's name."""
+    if not items:
+        return ""
+    top = items[0]
+    name = getattr(top, "name", "") or ""
+    description = getattr(top, "description", "") or ""
+    tags = getattr(top, "tags", None) or []
+    if not isinstance(tags, list):
+        tags = []
+    best_term = ""
+    best_score = 0.0
+    for term in slack_message_terms(text):
+        score = score_item_for_scan_term(term, name=name, description=description, tags=tags)
+        if score > best_score or (score == best_score and len(term) > len(best_term)):
+            best_score = score
+            best_term = term
+    return (best_term or name).strip()[:255]
+
+
 def _match_ask(text: str) -> re.Match[str] | None:
     for pat in _ASK_PATTERNS:
         m = pat.search(text)
@@ -226,9 +457,10 @@ def _clean_item_phrase(phrase: str) -> tuple[str, int | None]:
     if leading:
         qty = _parse_qty_token(leading.group(1))
         s = leading.group(2).strip()
-        s = re.sub(r"^(?:a|an|the|some|any)\s+", "", s, flags=re.I)
-        if s.casefold().startswith("to "):
-            return "", qty
+    s = re.sub(r"\s+from\s+(?:somebody|someone|anyone|anybody)\b.*$", "", s, flags=re.I)
+    s = re.sub(r"^(?:a|an|the|some|any)\s+", "", s, flags=re.I)
+    if s.casefold().startswith("to "):
+        return "", qty
     s = re.sub(r"\s+", " ", s).strip(" .,;:-")
     if len(s) < 3:
         return "", qty

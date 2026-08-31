@@ -164,6 +164,55 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
         mock_post.assert_not_called()
         self.assertEqual(ClosetChannelAsk.objects.count(), 0)
 
+    def test_inventory_word_without_ask_phrase_still_matches(self):
+        self.make_item(owner=self.owner, name="Fluke Multimeter")
+        with (
+            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
+            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}) as mock_eph,
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
+        ):
+            resp = _post_events(
+                client=self.client,
+                body=_closet_message_body(text="multimeter?"),
+                secret="test_secret",
+            )
+        self.assertEqual(resp.status_code, 200)
+        ask = ClosetChannelAsk.objects.get()
+        self.assertEqual(ask.item_query.casefold(), "multimeter")
+        mock_dm.assert_called()
+        mock_eph.assert_called()
+        mock_post.assert_called()
+
+    def test_return_chatter_does_not_scan_inventory(self):
+        self.make_item(owner=self.owner, name="Table saw")
+        with (
+            mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
+        ):
+            _post_events(
+                client=self.client,
+                body=_closet_message_body(text="I returned the table saw"),
+                secret="test_secret",
+            )
+        mock_post.assert_not_called()
+        mock_dm.assert_not_called()
+        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
+
+    def test_thanks_stays_silent_even_when_closet_has_items(self):
+        self.make_item(owner=self.owner, name="Table saw")
+        with (
+            mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
+        ):
+            _post_events(
+                client=self.client,
+                body=_closet_message_body(text="Thanks everyone"),
+                secret="test_secret",
+            )
+        mock_post.assert_not_called()
+        mock_dm.assert_not_called()
+        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
+
 
 @override_settings(
     SLACK_SIGNING_SECRET="test_secret",

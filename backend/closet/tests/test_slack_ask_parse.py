@@ -3,7 +3,14 @@ from types import SimpleNamespace
 
 from django.test import SimpleTestCase, TestCase
 
-from closet.slack_ask_parse import parse_closet_ask, score_closet_items_for_query, score_item_for_query
+from closet.slack_ask_parse import (
+    item_query_from_message_matches,
+    looks_like_chatter,
+    parse_closet_ask,
+    score_closet_items_for_message,
+    score_closet_items_for_query,
+    score_item_for_query,
+)
 from closet.tests.helpers import ClosetTestMixin
 
 
@@ -74,6 +81,33 @@ class ClosetAskParseTests(SimpleTestCase):
         self.assertEqual(parsed.item_query.casefold(), "placemats")
         self.assertEqual(parsed.quantity, 4)
 
+    def test_anyone_got_informal(self):
+        parsed = parse_closet_ask("anyone got a multimeter")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.item_query.casefold(), "multimeter")
+
+    def test_anybody_got(self):
+        parsed = parse_closet_ask("anybody got jumper cables?")
+        self.assertEqual(parsed.item_query.casefold(), "jumper cables")
+
+    def test_has_anyone_got(self):
+        parsed = parse_closet_ask("has anyone got a multimeter")
+        self.assertEqual(parsed.item_query.casefold(), "multimeter")
+
+    def test_six_ask_phrasings(self):
+        phrases = (
+            "Does anyone have an extension cord?",
+            "I need an extension cord",
+            "Can I borrow an extension cord from somebody",
+            "Anyone got an extension cord",
+            "Borrow request for an extension cord",
+            "Borrow: extension cord",
+        )
+        for text in phrases:
+            parsed = parse_closet_ask(text)
+            self.assertIsNotNone(parsed, msg=text)
+            self.assertEqual(parsed.item_query.casefold(), "extension cord", msg=text)
+
 
 class ClosetAskMatchScoreTests(SimpleTestCase):
     def test_exact_name(self):
@@ -109,3 +143,47 @@ class ClosetAskMatchDbTests(ClosetTestMixin, TestCase):
         dress = self.make_item(owner=self.owner, name="Cocktail dress")
         ranked = score_closet_items_for_query("table saw", [saw, dress])
         self.assertEqual([row.id for row in ranked], [saw.id])
+
+
+class ClosetMessageScanTests(SimpleTestCase):
+    def test_scans_each_word_against_item_names(self):
+        items = [
+            SimpleNamespace(name="Fluke Multimeter", description="", tags=[]),
+            SimpleNamespace(name="Cocktail dress", description="", tags=[]),
+        ]
+        ranked = score_closet_items_for_message("anyone got a multimeter", items)
+        self.assertEqual([i.name for i in ranked], ["Fluke Multimeter"])
+
+    def test_bigram_hits_multi_word_name(self):
+        items = [
+            SimpleNamespace(name="Table saw", description="", tags=[]),
+            SimpleNamespace(name="Cocktail dress", description="", tags=[]),
+        ]
+        ranked = score_closet_items_for_message("anyone got a table saw", items)
+        self.assertEqual([i.name for i in ranked], ["Table saw"])
+
+    def test_short_unigram_does_not_hit_multi_word_name(self):
+        items = [SimpleNamespace(name="Table saw", description="", tags=[])]
+        ranked = score_closet_items_for_message("set the table for dinner", items)
+        self.assertEqual(ranked, [])
+
+    def test_chatter_helpers(self):
+        self.assertTrue(looks_like_chatter("Thanks everyone"))
+        self.assertTrue(looks_like_chatter("I returned the table saw"))
+        self.assertFalse(looks_like_chatter("anyone got a multimeter"))
+
+    def test_item_query_from_scan(self):
+        items = [SimpleNamespace(name="Fluke Multimeter", description="", tags=[])]
+        self.assertEqual(
+            item_query_from_message_matches("anyone got a multimeter", items),
+            "multimeter",
+        )
+
+
+class ClosetMessageScanDbTests(ClosetTestMixin, TestCase):
+    def test_scans_owned_items_from_db(self):
+        self.create_users()
+        meter = self.make_item(owner=self.owner, name="Fluke Multimeter")
+        dress = self.make_item(owner=self.owner, name="Cocktail dress")
+        ranked = score_closet_items_for_message("need a multimeter", [meter, dress])
+        self.assertEqual([row.id for row in ranked], [meter.id])

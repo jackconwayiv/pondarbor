@@ -38,7 +38,7 @@ export type ClosetImageInventoryCardProps = {
 };
 
 /**
- * Square thumbnail + compact footer, styled like {@link FriendClosetListCard} — image-forward for Image Manager.
+ * Square thumbnail + compact footer — image-forward for Image Manager.
  */
 export function ClosetImageInventoryCard({
   row,

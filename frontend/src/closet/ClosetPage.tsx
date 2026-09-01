@@ -1900,9 +1900,10 @@ export default function ClosetPage() {
                     />
                   ) : null}
                   <SimpleGrid
-                    columns={{ base: 2, md: 4 }}
-                    gap={MAPPED_CLOSET_TAB_STACK_GAP}
+                    columns={{ base: 1, md: 2 }}
+                    gap="2"
                     w="100%"
+                    alignItems="stretch"
                   >
                     {visibleGridItems.map((item) => (
                       <FriendClosetListCard

@@ -1234,9 +1234,10 @@ export default function FriendProfilePage() {
                           Open an item for details, borrowing, and returns.
                         </Text>
                         <SimpleGrid
-                          columns={{ base: 1, md: 3 }}
-                          gap={MAPPED_LIST_STACK_GAP}
+                          columns={{ base: 1, md: 2 }}
+                          gap="2"
                           w="100%"
+                          alignItems="stretch"
                         >
                           {closetItems.map((item) => (
                             <FriendClosetListCard

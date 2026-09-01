@@ -29,7 +29,7 @@ def staff_notifications_enabled() -> bool:
 
 
 def pondarbor_origin() -> str:
-    return (getattr(settings, "PONDARBOR_ORIGIN", None) or "https://www.pondarbor.com").strip().rstrip("/")
+    return (getattr(settings, "PONDARBOR_ORIGIN", None) or "https://pondarbor.com").strip().rstrip("/")
 
 
 def staff_page_url() -> str:

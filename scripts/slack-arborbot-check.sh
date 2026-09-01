@@ -47,7 +47,7 @@ fi
 if [[ -n "${SLACK_CREATE_ACCOUNT_URL:-}" ]]; then
   echo "OK: SLACK_CREATE_ACCOUNT_URL=${SLACK_CREATE_ACCOUNT_URL}"
 else
-  echo "INFO: SLACK_CREATE_ACCOUNT_URL unset (defaults to https://www.pondarbor.com/)"
+  echo "INFO: SLACK_CREATE_ACCOUNT_URL unset (defaults to https://pondarbor.com/)"
 fi
 
 if [[ -n "${VITE_AUTH0_SLACK_CONNECTION:-}" ]]; then
@@ -58,7 +58,7 @@ fi
 
 echo ""
 echo "=== Webhook URLs (configure in Slack app if not using manifest) ==="
-ORIGIN="${SLACK_CREATE_ACCOUNT_URL:-https://www.pondarbor.com/}"
+ORIGIN="${SLACK_CREATE_ACCOUNT_URL:-https://pondarbor.com/}"
 ORIGIN="${ORIGIN%/}"
 echo "Events API:  ${ORIGIN}/api/v1/slack/events/"
 echo "Slash /song: ${ORIGIN}/api/v1/slack/commands/"

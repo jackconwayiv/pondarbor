@@ -203,6 +203,7 @@ class SlackDmThrottleTests(TestCase):
     SLACK_BOT_TOKEN="xoxb-test",
     SLACK_DM_THROTTLE_ENABLED=True,
     SLACK_DM_THROTTLE_HOURS=24,
+    SLACK_CLOSET_CHANNEL_ID="C_closet",
     SLACK_CLOSET_NOTIFICATIONS_ENABLED=True,
 )
 class SlackSlashFlushTests(TestCase):
@@ -213,7 +214,7 @@ class SlackSlashFlushTests(TestCase):
         self.user.save(update_fields=["account_status"])
         SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_alice", user=self.user, arborbot_dms_enabled=True)
 
-    @mock.patch("slack_integration.closet_commands.notify_pondarbor_user_dm")
+    @mock.patch("slack_integration.closet_commands.notify_closet_channel_ephemeral")
     @mock.patch("slack_integration.notify._send_slack_dm_now")
     def test_slash_quote_triggers_site_wide_flush(self, mock_send, mock_closet_notify):
         mock_send.return_value = {"ok": True}
@@ -239,7 +240,7 @@ class SlackSlashFlushTests(TestCase):
         mock_closet_notify.assert_not_called()
         self.assertFalse(SlackDmQueueItem.objects.filter(user=other, sent_at__isnull=True).exists())
 
-    @mock.patch("slack_integration.closet_commands.notify_pondarbor_user_dm")
+    @mock.patch("slack_integration.closet_commands.notify_closet_channel_ephemeral")
     @mock.patch("slack_integration.notify._send_slack_dm_now")
     def test_closet_sends_separate_dm_from_digest(self, mock_send, mock_notify):
         mock_send.return_value = {"ok": True}
@@ -263,7 +264,6 @@ class SlackSlashFlushTests(TestCase):
         mock_send.assert_called()
         mock_notify.assert_called_once()
         closet_kwargs = mock_notify.call_args.kwargs
-        self.assertEqual(closet_kwargs.get("rate"), "immediate")
         digest_call = mock_send.call_args
         digest_text = digest_call.kwargs.get("text") or ""
         self.assertIn("digest", digest_text.lower())
@@ -271,7 +271,7 @@ class SlackSlashFlushTests(TestCase):
         self.assertIn("Closet inbox", closet_text)
         self.assertNotIn("digest", closet_text.lower())
 
-    @mock.patch("slack_integration.closet_commands.notify_pondarbor_user_dm")
+    @mock.patch("slack_integration.closet_commands.notify_closet_channel_ephemeral")
     def test_slash_closet_does_not_create_queue_item(self, mock_notify):
         mock_notify.return_value = {"ok": True}
         _post_command(

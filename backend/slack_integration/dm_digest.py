@@ -22,7 +22,7 @@ _TRUNCATION_NOTE = "_Showing the first items — open PondArbor for the full lis
 
 
 def pondarbor_origin() -> str:
-    return (getattr(settings, "PONDARBOR_ORIGIN", None) or "https://www.pondarbor.com").strip().rstrip("/")
+    return (getattr(settings, "PONDARBOR_ORIGIN", None) or "https://pondarbor.com").strip().rstrip("/")
 
 
 def dm_throttle_enabled() -> bool:

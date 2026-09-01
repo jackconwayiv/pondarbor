@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from django.conf import settings
 from django.utils import timezone
 
 from closet.actions import (
@@ -29,19 +28,13 @@ from closet.slack_notify import (
     closet_user_label,
     notify_borrow_request_approved_to_requester,
     notify_borrow_request_to_owner,
-    notify_slack_action_confirmation,
 )
 from friends.services import are_friends, friend_ids_for_user
-from slack_integration.notify import notify_pondarbor_user_dm
+from slack_integration.notify import notify_closet_channel_ephemeral
 from slack_integration.slack_api import slack_chat_post_ephemeral, slack_chat_post_message
-from slack_integration.slack_ids import normalize_slack_channel_id
 from users.models import User
 
 logger = logging.getLogger(__name__)
-
-
-def closet_channel_id() -> str:
-    return normalize_slack_channel_id(getattr(settings, "SLACK_CLOSET_CHANNEL_ID", None) or "")
 
 
 def create_slash_closet_request(
@@ -51,7 +44,7 @@ def create_slash_closet_request(
     command_text: str,
     closet_channel: str,
 ) -> tuple[ClosetChannelAsk, list[Item], list[dict], str]:
-    """Create a channel ask from `/request` and DM any friend-closet matches."""
+    """Create a channel ask from `/request` and ephemeral friend-closet matches in #closet."""
     item_query, quantity = parse_request_command_text(command_text)
     raw_text = (command_text or "").strip()[:4000]
     ask = ClosetChannelAsk.objects.create(
@@ -68,7 +61,7 @@ def create_slash_closet_request(
     matches = _friend_matches_for_ask(user=user, query=ask.item_query)
     if matches:
         blocks, summary = build_ask_match_blocks(ask=ask, items=matches)
-        notify_pondarbor_user_dm(user, text=summary, blocks=blocks, rate="immediate")
+        notify_closet_channel_ephemeral(user, text=summary, blocks=blocks)
     crowd_blocks, crowd_text = build_crowd_ask_blocks(ask=ask)
     logger.info(
         "closet slash request ask_id=%s matches=%s query=%r",
@@ -117,8 +110,8 @@ def handle_request_loan(*, user: User, ask_id: int, item_id: int) -> None:
         row=row,
         is_update=was_update,
     )
-    notify_slack_action_confirmation(
-        user=user,
+    notify_closet_channel_ephemeral(
+        user,
         text=f"Request sent to {closet_user_label(item.owner_user)}.",
     )
 
@@ -128,7 +121,7 @@ def handle_i_dont(*, user: User, ask_id: int, channel_id: str, slack_user_id: st
     if channel_id and slack_user_id:
         slack_chat_post_ephemeral(channel=channel_id, user=slack_user_id, text="Thanks for replying!")
         return
-    notify_slack_action_confirmation(user=user, text="Thanks for replying!")
+    notify_closet_channel_ephemeral(user, text="Thanks for replying!")
 
 
 def handle_i_do(*, user: User, ask_id: int) -> None:
@@ -141,14 +134,14 @@ def handle_i_do(*, user: User, ask_id: int) -> None:
         .first()
     )
     if existing:
-        _send_offer_dm(user, existing)
+        _send_offer_prompt(user, existing)
         return
     _announce_i_do_in_channel(ask=ask, user=user)
     owned = _owned_items(user)
     close = score_closet_items_for_query(ask.item_query, owned)
     if close:
         blocks, text = build_i_do_picker_blocks(ask=ask, items=close)
-        notify_pondarbor_user_dm(user, text=text, blocks=blocks, rate="immediate")
+        notify_closet_channel_ephemeral(user, text=text, blocks=blocks)
         return
     _create_item_and_offer(user=user, ask=ask)
 
@@ -162,7 +155,7 @@ def handle_pick_item(*, user: User, ask_id: int, item_id: int) -> None:
         raise ClosetActionError("You can only offer items you own.")
     existing = ClosetChannelAskOffer.objects.filter(ask=ask, owner_user=user).select_related("item").first()
     if existing:
-        _send_offer_dm(user, existing)
+        _send_offer_prompt(user, existing)
         return
     offer = ClosetChannelAskOffer.objects.create(
         ask=ask,
@@ -170,7 +163,7 @@ def handle_pick_item(*, user: User, ask_id: int, item_id: int) -> None:
         item=item,
         created_item=False,
     )
-    _send_offer_dm(user, offer)
+    _send_offer_prompt(user, offer)
     _notify_requester_now_in_closet(ask, item)
 
 
@@ -180,7 +173,7 @@ def handle_create_item(*, user: User, ask_id: int) -> None:
         raise ClosetActionError("That's your own request.")
     existing = ClosetChannelAskOffer.objects.filter(ask=ask, owner_user=user).select_related("item").first()
     if existing:
-        _send_offer_dm(user, existing)
+        _send_offer_prompt(user, existing)
         return
     _create_item_and_offer(user=user, ask=ask)
 
@@ -200,17 +193,17 @@ def handle_offer_yes(*, user: User, offer_id: int) -> None:
     row, loan = offer_loan_from_ask(owner=user, ask=ask, item=item)
     if loan:
         schedule_closet_slack_notify(notify_borrow_request_approved_to_requester, loan=loan)
-        notify_slack_action_confirmation(user=user, text="Loan started ✓")
+        notify_closet_channel_ephemeral(user, text="Loan started ✓")
         return
-    notify_slack_action_confirmation(
-        user=user,
+    notify_closet_channel_ephemeral(
+        user,
         text="Item is currently loaned. A pending request was created instead.",
     )
     pending_text = (
         f":coat: *Closet* — {closet_user_label(user)} offered *{item.name}*, "
         f"but it's currently loaned. Your request is pending."
     )
-    notify_pondarbor_user_dm(ask.requester_user, text=pending_text, rate="immediate")
+    notify_closet_channel_ephemeral(ask.requester_user, text=pending_text)
 
 
 def handle_offer_no(*, user: User, offer_id: int) -> None:
@@ -218,9 +211,9 @@ def handle_offer_no(*, user: User, offer_id: int) -> None:
     if offer.owner_user_id != user.id:
         raise ClosetActionError("Only the person who offered can dismiss this.", status_code=403)
     if offer.created_item:
-        notify_slack_action_confirmation(user=user, text="Okay — the item stays in your closet.")
+        notify_closet_channel_ephemeral(user, text="Okay — the item stays in your closet.")
         return
-    notify_slack_action_confirmation(user=user, text="Okay.")
+    notify_closet_channel_ephemeral(user, text="Okay.")
 
 
 def _create_item_and_offer(*, user: User, ask: ClosetChannelAsk) -> ClosetChannelAskOffer:
@@ -235,7 +228,7 @@ def _create_item_and_offer(*, user: User, ask: ClosetChannelAsk) -> ClosetChanne
         item=item,
         created_item=True,
     )
-    _send_offer_dm(user, offer)
+    _send_offer_prompt(user, offer)
     _notify_requester_now_in_closet(ask, item)
     return offer
 
@@ -257,16 +250,16 @@ def _announce_i_do_in_channel(*, ask: ClosetChannelAsk, user: User) -> None:
         logger.warning("closet i_do channel notice failed: %s", posted)
 
 
-def _send_offer_dm(user: User, offer: ClosetChannelAskOffer) -> None:
+def _send_offer_prompt(user: User, offer: ClosetChannelAskOffer) -> None:
     ask = offer.ask
     blocks, text = build_offer_loan_blocks(ask=ask, item=offer.item, offer_id=offer.id)
-    notify_pondarbor_user_dm(user, text=text, blocks=blocks, rate="immediate")
+    notify_closet_channel_ephemeral(user, text=text, blocks=blocks)
 
 
 def _notify_requester_now_in_closet(ask: ClosetChannelAsk, item: Item) -> None:
     can_request = are_friends(user_a=ask.requester_user, user_b=item.owner_user)
     blocks, text = build_now_in_closet_blocks(ask=ask, item=item, can_request=can_request)
-    notify_pondarbor_user_dm(ask.requester_user, text=text, blocks=blocks, rate="immediate")
+    notify_closet_channel_ephemeral(ask.requester_user, text=text, blocks=blocks)
 
 
 def _friend_matches_for_ask(*, user: User, query: str) -> list[Item]:

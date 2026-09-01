@@ -411,10 +411,10 @@ def slack_commands(request):
         )
     if command == "/closet":
         user, err = _resolve_user_for_slack(team_id, slack_user_id)
-        return handle_slack_closet_command(user=user, err=err)
+        return handle_slack_closet_command(user=user, err=err, channel_id=channel_id)
     if command == "/loans":
         user, err = _resolve_user_for_slack(team_id, slack_user_id)
-        return handle_slack_loans_command(user=user, err=err)
+        return handle_slack_loans_command(user=user, err=err, channel_id=channel_id)
     if command == "/request":
         user, err = _resolve_user_for_slack(team_id, slack_user_id)
         return handle_slack_request_command(

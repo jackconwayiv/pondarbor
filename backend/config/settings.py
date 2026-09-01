@@ -309,9 +309,9 @@ SLACK_CLOSET_CHANNEL_ID = _env_slack_channel_id("SLACK_CLOSET_CHANNEL_ID")
 # Optional: private channel for ingest failure notifications (ops visibility).
 SLACK_DEBUG_CHANNEL_ID = _env_slack_channel_id("SLACK_DEBUG_CHANNEL_ID")
 # Used for Slack “Create account” button. Should point at a page that offers “Sign up with Slack”.
-SLACK_CREATE_ACCOUNT_URL = os.getenv("SLACK_CREATE_ACCOUNT_URL", "https://www.pondarbor.com/").strip()
+SLACK_CREATE_ACCOUNT_URL = os.getenv("SLACK_CREATE_ACCOUNT_URL", "https://pondarbor.com/").strip()
 SONGADAY_SLACK_PROMPT_TIMEZONE = os.getenv("SONGADAY_SLACK_PROMPT_TIMEZONE", "UTC").strip()
-PONDARBOR_ORIGIN = os.getenv("PONDARBOR_ORIGIN", "https://www.pondarbor.com").strip().rstrip("/")
+PONDARBOR_ORIGIN = os.getenv("PONDARBOR_ORIGIN", "https://pondarbor.com").strip().rstrip("/")
 SLACK_CLOSET_NOTIFICATIONS_ENABLED = os.getenv("SLACK_CLOSET_NOTIFICATIONS_ENABLED", "true").lower() in (
     "true",
     "1",

@@ -61,14 +61,16 @@ build_settings:
       # Optional: events listen channel. Falls back to SLACK_PROMPTS_CHANNEL_ID when unset.
     - name: SLACK_CLOSET_CHANNEL_ID
       source: manual
-      # Public #closet channel for /request I Do prompts. Invite ArborBot. Must differ from Song-a-Day.
+      # Public #closet channel for /request I Do prompts and Closet ephemerals. Invite ArborBot. Must differ from Song-a-Day.
     - name: SLACK_DEBUG_CHANNEL_ID
       source: manual
       # Optional: private debug channel for ingest failures (ops visibility).
     - name: SONGADAY_SLACK_PROMPT_TIMEZONE
       source: manual
     - name: SLACK_CREATE_ACCOUNT_URL
-      value: "https://www.pondarbor.com/"
+      value: "https://pondarbor.com/"
+    - name: PONDARBOR_ORIGIN
+      value: "https://pondarbor.com"
     - name: PUBLIC_SITE_ORIGIN
       value: "https://www.pondarbor.com"
 

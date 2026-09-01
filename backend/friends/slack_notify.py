@@ -13,7 +13,7 @@ User = get_user_model()
 
 
 def pondarbor_origin() -> str:
-    return (getattr(settings, "PONDARBOR_ORIGIN", None) or "https://www.pondarbor.com").strip().rstrip("/")
+    return (getattr(settings, "PONDARBOR_ORIGIN", None) or "https://pondarbor.com").strip().rstrip("/")
 
 
 def friends_inbox_url() -> str:

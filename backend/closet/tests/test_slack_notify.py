@@ -16,7 +16,7 @@ from slack_integration.models import SlackIdentity
 
 
 @override_settings(
-    PONDARBOR_ORIGIN="https://www.pondarbor.com",
+    PONDARBOR_ORIGIN="https://pondarbor.com",
     SLACK_CLOSET_NOTIFICATIONS_ENABLED=True,
     SLACK_BOT_TOKEN="xoxb-test",
 )
@@ -27,7 +27,7 @@ class ClosetSlackNotifyTests(ClosetTestMixin, TestCase):
         self.item = self.make_item(owner=self.owner, name="Winter jacket")
         SlackIdentity.objects.create(team_id="T1", slack_user_id="U_owner", user=self.owner)
 
-    @mock.patch("closet.slack_notify.notify_pondarbor_user_dm")
+    @mock.patch("closet.slack_notify.notify_closet_channel_ephemeral")
     def test_borrow_request_notify_includes_approve_buttons(self, mock_dm):
         row = self.make_request(item=self.item, requester=self.borrower, message="For the hike")
         notify_borrow_request_to_owner(row=row, is_update=False)
@@ -42,7 +42,7 @@ class ClosetSlackNotifyTests(ClosetTestMixin, TestCase):
         self.assertIn("closet_decline", action_ids)
         self.assertIn("Winter jacket", kwargs["text"])
 
-    @mock.patch("closet.slack_notify.notify_pondarbor_user_dm")
+    @mock.patch("closet.slack_notify.notify_closet_channel_ephemeral")
     def test_borrow_request_create_schedules_owner_dm(self, mock_dm):
         with self.captureOnCommitCallbacks(execute=True):
             self.borrower_client.post(
@@ -58,6 +58,7 @@ class ClosetSlackNotifyTests(ClosetTestMixin, TestCase):
         flat = json.dumps(blocks)
         self.assertIn("Winter jacket", flat)
         self.assertIn("closet_approve", flat)
+        self.assertIn("https://pondarbor.com/closet?tab=items&item=", flat)
 
     def test_loans_summary_includes_active_loan(self):
         row = self.make_request(item=self.item, requester=self.borrower)
@@ -76,7 +77,7 @@ class ClosetSlackNotifyTests(ClosetTestMixin, TestCase):
         self.assertIn("Waiting on others", flat)
         self.assertIn("Cooler", flat)
 
-    @mock.patch("closet.slack_notify.notify_pondarbor_user_dm")
+    @mock.patch("closet.slack_notify.notify_closet_channel_ephemeral")
     def test_loan_return_completed_notifies_borrower(self, mock_dm):
         row = self.make_request(item=self.item, requester=self.borrower)
         self.owner_client.post(f"/api/v1/closet/borrow-requests/{row.id}/approve/")
@@ -91,7 +92,7 @@ class ClosetSlackNotifyTests(ClosetTestMixin, TestCase):
         texts = [c.kwargs.get("text", "") for c in mock_dm.call_args_list]
         self.assertTrue(any("confirmed your return" in t for t in texts))
 
-    @mock.patch("closet.slack_notify.notify_pondarbor_user_dm")
+    @mock.patch("closet.slack_notify.notify_closet_channel_ephemeral")
     def test_cancel_borrow_notifies_owner(self, mock_dm):
         row = self.make_request(item=self.item, requester=self.borrower)
         mock_dm.reset_mock()

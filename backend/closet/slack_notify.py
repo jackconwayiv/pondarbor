@@ -1,4 +1,4 @@
-"""Closet Slack DM copy, Block Kit builders, and proactive notification dispatch."""
+"""Closet Slack copy, Block Kit builders, and #closet ephemeral notification dispatch."""
 
 from __future__ import annotations
 
@@ -13,13 +13,7 @@ from django.db.models import Exists, OuterRef, Q
 from closet.models import BorrowRequest, ClosetChannelAsk, Item, Loan
 from closet.serializers import _user_summary
 from closet.services import item_fk_owner_publication_eligible_q, owner_eligible_for_closet_publication_q
-from slack_integration.dm_queue import (
-    EVENT_CLOSET_BORROW_REQUEST,
-    EVENT_CLOSET_CUSTODY_OFFER,
-    ref_borrow_request,
-    ref_item,
-)
-from slack_integration.notify import notify_pondarbor_user_dm
+from slack_integration.notify import notify_closet_channel_ephemeral
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +24,7 @@ _TRUNCATION_NOTE = "_Showing the first items — open PondArbor for the full lis
 
 
 def pondarbor_origin() -> str:
-    return (getattr(settings, "PONDARBOR_ORIGIN", None) or "https://www.pondarbor.com").strip().rstrip("/")
+    return (getattr(settings, "PONDARBOR_ORIGIN", None) or "https://pondarbor.com").strip().rstrip("/")
 
 
 def closet_item_url(item_id: int) -> str:
@@ -167,13 +161,7 @@ def notify_borrow_request_to_owner(*, row: BorrowRequest, is_update: bool) -> No
             _action_button(action_id="closet_decline", text="Decline", value=str(row.id)),
         ],
     )
-    notify_pondarbor_user_dm(
-        row.item.owner_user,
-        text=text,
-        blocks=blocks,
-        event_type=EVENT_CLOSET_BORROW_REQUEST,
-        ref_key=ref_borrow_request(row.id),
-    )
+    notify_closet_channel_ephemeral(row.item.owner_user, text=text, blocks=blocks)
 
 
 def notify_borrow_request_canceled_to_owner(*, row: BorrowRequest) -> None:
@@ -183,14 +171,14 @@ def notify_borrow_request_canceled_to_owner(*, row: BorrowRequest) -> None:
         f"to borrow *{row.item.name}*."
     )
     blocks = _row_with_open_link(line=text, item_id=row.item_id, buttons=[])
-    notify_pondarbor_user_dm(row.item.owner_user, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(row.item.owner_user, text=text, blocks=blocks)
 
 
 def notify_borrow_request_approved_to_requester(*, loan: Loan) -> None:
     loan = _visible_loans().select_related("item", "borrower_user", "owner_user").get(pk=loan.pk)
     text = f":white_check_mark: *Closet* — {closet_user_label(loan.owner_user)} approved your borrow of *{loan.item.name}*."
     blocks = _row_with_open_link(line=text, item_id=loan.item_id, buttons=[])
-    notify_pondarbor_user_dm(loan.borrower_user, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(loan.borrower_user, text=text, blocks=blocks)
 
 
 def notify_borrow_request_declined_to_requester(*, row: BorrowRequest) -> None:
@@ -199,7 +187,7 @@ def notify_borrow_request_declined_to_requester(*, row: BorrowRequest) -> None:
     if row.decline_message.strip():
         text += f"\n_{row.decline_message.strip()}_"
     blocks = _row_with_open_link(line=text, item_id=row.item_id, buttons=[])
-    notify_pondarbor_user_dm(row.requester_user, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(row.requester_user, text=text, blocks=blocks)
 
 
 def notify_loan_marked_returned_to_owner(*, loan: Loan) -> None:
@@ -215,7 +203,7 @@ def notify_loan_marked_returned_to_owner(*, loan: Loan) -> None:
             _action_button(action_id="closet_confirm_loan", text="Confirm return", value=str(loan.id), style="primary"),
         ],
     )
-    notify_pondarbor_user_dm(loan.owner_user, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(loan.owner_user, text=text, blocks=blocks)
 
 
 def notify_custody_marked_returned_to_owner(*, item: Item) -> None:
@@ -231,7 +219,7 @@ def notify_custody_marked_returned_to_owner(*, item: Item) -> None:
             _action_button(action_id="closet_confirm_custody", text="Confirm return", value=str(item.id), style="primary"),
         ],
     )
-    notify_pondarbor_user_dm(item.owner_user, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(item.owner_user, text=text, blocks=blocks)
 
 
 def notify_loan_return_completed_to_borrower(*, loan: Loan) -> None:
@@ -241,7 +229,7 @@ def notify_loan_return_completed_to_borrower(*, loan: Loan) -> None:
         f"{closet_user_label(loan.owner_user)} confirmed your return. Thanks!"
     )
     blocks = _row_with_open_link(line=text, item_id=loan.item_id, buttons=[])
-    notify_pondarbor_user_dm(loan.borrower_user, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(loan.borrower_user, text=text, blocks=blocks)
 
 
 def notify_custody_return_completed_to_holder(*, item: Item, holder: User) -> None:
@@ -251,7 +239,7 @@ def notify_custody_return_completed_to_holder(*, item: Item, holder: User) -> No
         f"{closet_user_label(item.owner_user)} confirmed you returned it."
     )
     blocks = _row_with_open_link(line=text, item_id=item.id, buttons=[])
-    notify_pondarbor_user_dm(holder, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(holder, text=text, blocks=blocks)
 
 
 def notify_custody_dispute_to_owner(*, item: Item) -> None:
@@ -261,7 +249,7 @@ def notify_custody_dispute_to_owner(*, item: Item) -> None:
         f"Open PondArbor to resolve."
     )
     blocks = _row_with_open_link(line=text, item_id=item.id, buttons=[])
-    notify_pondarbor_user_dm(item.owner_user, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(item.owner_user, text=text, blocks=blocks)
 
 
 def notify_custody_offer_to_holder(*, item: Item, holder: User) -> None:
@@ -277,30 +265,27 @@ def notify_custody_offer_to_holder(*, item: Item, holder: User) -> None:
             _action_button(action_id="closet_reject_custody", text="Decline", value=str(item.id)),
         ],
     )
-    notify_pondarbor_user_dm(
-        holder,
-        text=text,
-        blocks=blocks,
-        event_type=EVENT_CLOSET_CUSTODY_OFFER,
-        ref_key=ref_item(item.id),
-    )
+    notify_closet_channel_ephemeral(holder, text=text, blocks=blocks)
 
 
 def notify_custody_offer_rejected_to_owner(*, item: Item, holder: User) -> None:
     item = _item_queryset().select_related("owner_user").get(pk=item.pk)
     text = f":coat: *Closet* — {closet_user_label(holder)} declined your custody offer for *{item.name}*."
     blocks = _row_with_open_link(line=text, item_id=item.id, buttons=[])
-    notify_pondarbor_user_dm(item.owner_user, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(item.owner_user, text=text, blocks=blocks)
 
 
 def notify_custody_offer_canceled_to_holder(*, item: Item, holder: User) -> None:
     item = _item_queryset().select_related("owner_user").get(pk=item.pk)
     text = f":coat: *Closet* — {closet_user_label(item.owner_user)} canceled the custody offer for *{item.name}*."
     blocks = _row_with_open_link(line=text, item_id=item.id, buttons=[])
-    notify_pondarbor_user_dm(holder, text=text, blocks=blocks)
+    notify_closet_channel_ephemeral(holder, text=text, blocks=blocks)
 
 
 def notify_slack_action_confirmation(*, user: User, text: str) -> None:
+    """Immediate DM confirmation for friends/staff Slack buttons (not Closet)."""
+    from slack_integration.notify import notify_pondarbor_user_dm
+
     notify_pondarbor_user_dm(user, text=text, rate="immediate")
 
 
@@ -678,7 +663,6 @@ def build_crowd_ask_blocks(*, ask: ClosetChannelAsk) -> tuple[list[dict], str]:
         _section(text),
         _actions_row(
             _action_button(action_id="closet_ask_i_do", text="I Do!", value=str(ask.id), style="primary"),
-            _action_button(action_id="closet_ask_i_dont", text="I Don't", value=str(ask.id)),
         ),
     ]
     return blocks, text

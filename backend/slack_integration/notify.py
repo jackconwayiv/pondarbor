@@ -1,4 +1,4 @@
-"""Send true Slack DMs to PondArbor users linked via SlackIdentity."""
+"""Slack DMs (friends/staff) and #closet ephemeral posts for PondArbor users."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from slack_integration.models import SlackIdentity
-from slack_integration.slack_api import slack_chat_post_dm
+from slack_integration.slack_api import slack_chat_post_dm, slack_chat_post_ephemeral
+from slack_integration.slack_ids import normalize_slack_channel_id
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,42 @@ User = get_user_model()
 
 def closet_notifications_enabled() -> bool:
     return bool(getattr(settings, "SLACK_CLOSET_NOTIFICATIONS_ENABLED", True))
+
+
+def closet_channel_id() -> str:
+    return normalize_slack_channel_id(getattr(settings, "SLACK_CLOSET_CHANNEL_ID", None) or "")
+
+
+def notify_closet_channel_ephemeral(user, *, text: str, blocks: list | None = None) -> dict:
+    """Post a user-only message in #closet (not a DM)."""
+    if not closet_notifications_enabled():
+        return {"ok": False, "skipped": "disabled"}
+    channel = closet_channel_id()
+    if not channel:
+        logger.info("closet ephemeral skipped: no closet channel user_id=%s", user.id)
+        return {"ok": False, "skipped": "no_closet_channel"}
+    ident = (
+        SlackIdentity.objects.filter(user_id=user.id)
+        .order_by("-updated_at")
+        .first()
+    )
+    if not ident:
+        logger.info("closet ephemeral skipped: no SlackIdentity for user_id=%s", user.id)
+        return {"ok": False, "skipped": "no_slack_identity"}
+    resp = slack_chat_post_ephemeral(
+        channel=channel,
+        user=ident.slack_user_id,
+        text=text,
+        blocks=blocks,
+    )
+    if not resp.get("ok"):
+        logger.warning(
+            "closet ephemeral failed user_id=%s slack_user=%s error=%s",
+            user.id,
+            ident.slack_user_id,
+            resp.get("error"),
+        )
+    return resp
 
 
 def _feature_notifications_enabled(feature: str) -> bool:

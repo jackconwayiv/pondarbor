@@ -64,7 +64,7 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
         self.make_item(owner=self.owner, name="Fluke Multimeter")
         with (
             mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
+            mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral") as mock_eph,
         ):
             for text in (
                 "Does anyone have a table saw?",
@@ -80,7 +80,7 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
                 )
                 self.assertEqual(resp.status_code, 200, msg=text)
         mock_post.assert_not_called()
-        mock_dm.assert_not_called()
+        mock_eph.assert_not_called()
         self.assertEqual(ClosetChannelAsk.objects.count(), 0)
 
     def test_songaday_channel_still_ignores_closet_phrasing_without_url(self):
@@ -138,26 +138,28 @@ class ClosetRequestCommandTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.json()["response_type"], "ephemeral")
         self.assertEqual(ClosetChannelAsk.objects.count(), 0)
 
-    def test_in_closet_echoes_crowd_prompt_and_dms_matches(self):
+    def test_in_closet_echoes_crowd_prompt_and_ephemeral_matches(self):
         self.make_item(owner=self.owner, name="Table saw")
         with (
             mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
+            mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral") as mock_eph,
         ):
             resp = self._post(text="a table saw", channel_id="C_closet")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["response_type"], "in_channel")
         self.assertIn("I Do", json.dumps(data["blocks"]))
+        self.assertNotIn("closet_ask_i_dont", json.dumps(data["blocks"]))
+        self.assertNotIn("I Don't", json.dumps(data["blocks"]))
         self.assertIn("table saw", data["text"].casefold())
         mock_post.assert_not_called()
-        mock_dm.assert_called()
+        mock_eph.assert_called()
         ask = ClosetChannelAsk.objects.get()
         self.assertEqual(ask.item_query.casefold(), "table saw")
         self.assertEqual(ask.requester_user_id, self.borrower.id)
         self.assertEqual(ask.slack_channel_id, "C_closet")
-        dm_blocks = json.dumps(mock_dm.call_args.kwargs["blocks"])
-        self.assertIn("Request loan", dm_blocks)
+        eph_blocks = json.dumps(mock_eph.call_args.kwargs["blocks"])
+        self.assertIn("Request loan", eph_blocks)
 
     def test_from_other_channel_posts_to_closet(self):
         with (
@@ -165,17 +167,18 @@ class ClosetRequestCommandTests(ClosetTestMixin, TestCase):
                 "slack_integration.closet_ask.slack_chat_post_message",
                 return_value={"ok": True, "ts": "222.2"},
             ) as mock_post,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
+            mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral") as mock_eph,
         ):
             resp = self._post(text="weedwhacker", channel_id="D0123456789")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["response_type"], "ephemeral")
         self.assertIn("closet channel", data["text"].casefold())
-        mock_dm.assert_not_called()
+        mock_eph.assert_not_called()
         mock_post.assert_called_once()
         self.assertEqual(mock_post.call_args.kwargs["channel"], "C_closet")
         self.assertIn("I Do", json.dumps(mock_post.call_args.kwargs["blocks"]))
+        self.assertNotIn("closet_ask_i_dont", json.dumps(mock_post.call_args.kwargs["blocks"]))
         ask = ClosetChannelAsk.objects.get()
         self.assertEqual(ask.item_query.casefold(), "weedwhacker")
         self.assertEqual(ask.slack_prompt_ts, "222.2")
@@ -228,7 +231,7 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
             "actions": [action],
         }
 
-    @mock.patch("slack_integration.interactions.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.interactions.notify_closet_channel_ephemeral")
     def test_requester_cannot_i_do_own_ask(self, mock_confirm):
         resp = _post_interaction(
             client=self.client,
@@ -241,7 +244,7 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         self.assertIn("own request", mock_confirm.call_args.kwargs["text"].lower())
 
     @mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "333.3"})
-    @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
+    @mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral")
     def test_i_do_with_close_item_sends_picker_not_duplicate(self, mock_dm, mock_post):
         existing = self.make_item(owner=self.owner, name="Table saw")
         resp = _post_interaction(
@@ -260,7 +263,7 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         self.assertIn("table saw", mock_post.call_args.kwargs["text"].casefold())
 
     @mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "333.3"})
-    @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
+    @mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral")
     def test_i_do_without_match_creates_item_and_notifies_requester(self, mock_dm, mock_post):
         resp = _post_interaction(
             client=self.client,
@@ -279,7 +282,7 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         self.assertTrue(mock_post.call_args.kwargs.get("reply_broadcast"))
 
     @mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "333.3"})
-    @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
+    @mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral")
     def test_second_i_do_does_not_repost_channel_notice(self, mock_dm, mock_post):
         item = self.make_item(owner=self.owner, name="Table saw")
         ClosetChannelAskOffer.objects.create(
@@ -292,7 +295,7 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         )
         mock_post.assert_not_called()
 
-    @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
+    @mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral")
     def test_pick_existing_does_not_create_item(self, mock_dm):
         item = self.make_item(owner=self.owner, name="DeWalt table saw")
         resp = _post_interaction(
@@ -310,9 +313,9 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         self.assertEqual(offer.item_id, item.id)
         self.assertFalse(offer.created_item)
 
-    @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
-    @mock.patch("slack_integration.closet_ask.notify_slack_action_confirmation")
-    def test_offer_yes_starts_loan(self, mock_confirm, mock_dm):
+    @mock.patch("closet.slack_notify.notify_closet_channel_ephemeral")
+    @mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral")
+    def test_offer_yes_starts_loan(self, mock_eph, _mock_scheduled):
         item = self.make_item(owner=self.owner, name="Table saw")
         offer = ClosetChannelAskOffer.objects.create(
             ask=self.ask, owner_user=self.owner, item=item, created_item=False
@@ -331,12 +334,11 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         item.refresh_from_db()
         self.assertEqual(item.current_holder_user_id, self.borrower.id)
         self.assertTrue(Loan.objects.filter(item=item, status=Loan.Status.ACTIVE).exists())
-        mock_confirm.assert_called()
-        self.assertIn("Loan started", mock_confirm.call_args.kwargs["text"])
+        texts = [c.kwargs.get("text", "") for c in mock_eph.call_args_list]
+        self.assertTrue(any("Loan started" in t for t in texts))
 
-    @mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm")
-    @mock.patch("slack_integration.closet_ask.notify_slack_action_confirmation")
-    def test_offer_yes_when_loaned_creates_pending_request(self, mock_confirm, mock_dm):
+    @mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral")
+    def test_offer_yes_when_loaned_creates_pending_request(self, mock_eph):
         item = self.make_item(owner=self.owner, name="Table saw", holder=self.friend_two)
         self.make_friends(self.owner, self.friend_two)
         self.make_active_loan(item=item, owner=self.owner, borrower=self.friend_two)
@@ -356,9 +358,10 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         row = BorrowRequest.objects.get(item=item, requester_user=self.borrower)
         self.assertEqual(row.status, BorrowRequest.Status.PENDING)
         self.assertFalse(Loan.objects.filter(item=item, borrower_user=self.borrower).exists())
-        self.assertIn("loaned", mock_confirm.call_args.kwargs["text"].lower())
+        texts = [c.kwargs.get("text", "") for c in mock_eph.call_args_list]
+        self.assertTrue(any("loaned" in t.lower() for t in texts))
 
-    @mock.patch("slack_integration.interactions.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.interactions.notify_closet_channel_ephemeral")
     def test_offer_yes_not_friends(self, mock_confirm):
         item = self.make_item(owner=self.other, name="Table saw")
         SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_other", user=self.other)
@@ -378,10 +381,10 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
         self.assertIn("not friends", mock_confirm.call_args.kwargs["text"].lower())
         self.assertFalse(Loan.objects.filter(item=item).exists())
 
-    @mock.patch("slack_integration.closet_ask.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.closet_ask.notify_closet_channel_ephemeral")
     def test_request_loan_creates_pending_and_notifies_owner(self, mock_confirm):
         item = self.make_item(owner=self.owner, name="Table saw")
-        with mock.patch("closet.slack_notify.notify_pondarbor_user_dm") as mock_dm:
+        with mock.patch("closet.slack_notify.notify_closet_channel_ephemeral") as mock_eph:
             with self.captureOnCommitCallbacks(execute=True):
                 resp = _post_interaction(
                     client=self.client,
@@ -397,7 +400,7 @@ class ClosetChannelAskInteractionTests(ClosetTestMixin, TestCase):
             self.assertEqual(row.status, BorrowRequest.Status.PENDING)
             mock_confirm.assert_called()
             self.assertIn("Request sent", mock_confirm.call_args.kwargs["text"])
-            self.assertTrue(mock_dm.called)
+            self.assertTrue(mock_eph.called)
 
     @mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral")
     def test_i_dont_ephemeral_ack(self, mock_eph):

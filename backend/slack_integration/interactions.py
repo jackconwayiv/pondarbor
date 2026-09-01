@@ -47,6 +47,7 @@ from slack_integration.closet_ask import (
     handle_pick_item,
     handle_request_loan,
 )
+from slack_integration.notify import notify_closet_channel_ephemeral
 from slack_integration.slack_api import slack_chat_post_ephemeral, slack_response_url_replace
 from slack_integration.slack_verify import verify_slack_request_signature
 from slack_integration.views import _resolve_user_for_slack
@@ -132,6 +133,13 @@ def _parse_id_pair(value: str) -> tuple[int, int]:
     return int(left), int(right)
 
 
+def _confirm_action(*, user: User, text: str, action_id: str) -> None:
+    if action_id.startswith("closet_"):
+        notify_closet_channel_ephemeral(user, text=text)
+        return
+    notify_slack_action_confirmation(user=user, text=text)
+
+
 def _run_action(*, user: User, action_id: str, value: str, payload: dict) -> None:
     if action_id == "closet_request_loan":
         ask_id, item_id = _parse_id_pair(value)
@@ -161,16 +169,16 @@ def _run_action(*, user: User, action_id: str, value: str, payload: dict) -> Non
     if action_id == "closet_approve":
         loan = approve_borrow_request(user=user, borrow_request_id=int(value))
         schedule_closet_slack_notify(notify_borrow_request_approved_to_requester, loan=loan)
-        notify_slack_action_confirmation(user=user, text="Approved ✓")
+        _confirm_action(user=user, text="Approved ✓", action_id=action_id)
         return
     if action_id == "closet_decline":
         row = decline_borrow_request(user=user, borrow_request_id=int(value))
         schedule_closet_slack_notify(notify_borrow_request_declined_to_requester, row=row)
-        notify_slack_action_confirmation(user=user, text="Declined.")
+        _confirm_action(user=user, text="Declined.", action_id=action_id)
         return
     if action_id == "closet_accept_custody":
         accept_custody(user=user, item_id=int(value))
-        notify_slack_action_confirmation(user=user, text="Custody accepted ✓")
+        _confirm_action(user=user, text="Custody accepted ✓", action_id=action_id)
         return
     if action_id == "closet_reject_custody":
         item = reject_pending_custody(user=user, item_id=int(value))
@@ -179,24 +187,28 @@ def _run_action(*, user: User, action_id: str, value: str, payload: dict) -> Non
             item=item,
             holder=user,
         )
-        notify_slack_action_confirmation(user=user, text="Custody offer declined.")
+        _confirm_action(user=user, text="Custody offer declined.", action_id=action_id)
         return
     if action_id == "closet_mark_loan_returned":
         loan, first_mark = mark_loan_returned_by_borrower(user=user, loan_id=int(value))
         if first_mark:
             schedule_closet_slack_notify(notify_loan_marked_returned_to_owner, loan=loan)
-        notify_slack_action_confirmation(user=user, text="Marked as returned. The owner will confirm.")
+        _confirm_action(
+            user=user, text="Marked as returned. The owner will confirm.", action_id=action_id
+        )
         return
     if action_id == "closet_mark_custody_returned":
         item, first_mark = mark_custody_returned_by_holder(user=user, item_id=int(value))
         if first_mark:
             schedule_closet_slack_notify(notify_custody_marked_returned_to_owner, item=item)
-        notify_slack_action_confirmation(user=user, text="Marked as returned. The owner will confirm.")
+        _confirm_action(
+            user=user, text="Marked as returned. The owner will confirm.", action_id=action_id
+        )
         return
     if action_id == "closet_confirm_loan":
         loan = confirm_loan_return(user=user, loan_id=int(value))
         schedule_closet_slack_notify(notify_loan_return_completed_to_borrower, loan=loan)
-        notify_slack_action_confirmation(user=user, text="Return confirmed ✓")
+        _confirm_action(user=user, text="Return confirmed ✓", action_id=action_id)
         return
     if action_id == "closet_confirm_custody":
         item, former_holder = confirm_custody_return(user=user, item_id=int(value))
@@ -206,7 +218,7 @@ def _run_action(*, user: User, action_id: str, value: str, payload: dict) -> Non
                 item=item,
                 holder=former_holder,
             )
-        notify_slack_action_confirmation(user=user, text="Return confirmed ✓")
+        _confirm_action(user=user, text="Return confirmed ✓", action_id=action_id)
         return
     if action_id == "friends_accept":
         accept_incoming_friend_request(user=user, requester_id=int(value))
@@ -265,10 +277,10 @@ def _handle_block_actions(payload: dict) -> HttpResponse:
         _run_action(user=user, action_id=action_id, value=value, payload=payload)
         _dismiss_per_user_buttons(payload)
     except (ClosetActionError, FriendActionError, StaffActionError, WhatIfActionError, ContactActionError) as exc:
-        notify_slack_action_confirmation(user=user, text=exc.message)
+        _confirm_action(user=user, text=exc.message, action_id=action_id)
     except Exception:
         logger.exception("Slack interaction failed action_id=%s", action_id)
-        notify_slack_action_confirmation(user=user, text="Something went wrong. Try again in PondArbor.")
+        _confirm_action(user=user, text="Something went wrong. Try again in PondArbor.", action_id=action_id)
     return HttpResponse(status=200)
 
 

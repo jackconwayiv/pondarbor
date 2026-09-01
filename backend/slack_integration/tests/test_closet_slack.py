@@ -53,6 +53,7 @@ def _post_interaction(*, client: Client, payload: dict, secret: str, timestamp: 
 @override_settings(
     SLACK_SIGNING_SECRET="test_secret",
     SLACK_BOT_TOKEN="xoxb-test",
+    SLACK_CLOSET_CHANNEL_ID="C_closet",
     SLACK_CLOSET_NOTIFICATIONS_ENABLED=True,
 )
 class SlackClosetCommandTests(ClosetTestMixin, TestCase):
@@ -61,8 +62,9 @@ class SlackClosetCommandTests(ClosetTestMixin, TestCase):
         self.create_users()
         SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_owner", user=self.owner)
 
-    @mock.patch("slack_integration.closet_commands.notify_pondarbor_user_dm")
-    def test_closet_command_sends_inbox_dm(self, mock_dm):
+    @mock.patch("slack_integration.closet_commands.notify_closet_channel_ephemeral")
+    def test_closet_command_from_elsewhere_posts_inbox_ephemeral(self, mock_eph):
+        mock_eph.return_value = {"ok": True}
         resp = _post_command(
             client=self.client,
             secret="test_secret",
@@ -71,16 +73,38 @@ class SlackClosetCommandTests(ClosetTestMixin, TestCase):
                 "text": "",
                 "user_id": "U_owner",
                 "team_id": "T_test",
+                "channel_id": "D0123456789",
             },
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("closet inbox", resp.json()["text"].lower())
-        mock_dm.assert_called_once()
-        blocks = mock_dm.call_args.kwargs["blocks"]
+        mock_eph.assert_called_once()
+        blocks = mock_eph.call_args.kwargs["blocks"]
         self.assertTrue(any(b.get("type") == "section" for b in blocks))
 
-    @mock.patch("slack_integration.closet_commands.notify_pondarbor_user_dm")
-    def test_loans_command_sends_summary_dm(self, mock_dm):
+    @mock.patch("slack_integration.closet_commands.notify_closet_channel_ephemeral")
+    def test_closet_command_in_closet_returns_ephemeral_blocks(self, mock_eph):
+        resp = _post_command(
+            client=self.client,
+            secret="test_secret",
+            params={
+                "command": "/closet",
+                "text": "",
+                "user_id": "U_owner",
+                "team_id": "T_test",
+                "channel_id": "C_closet",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["response_type"], "ephemeral")
+        self.assertIn("Closet inbox", data["text"])
+        self.assertTrue(any(b.get("type") == "section" for b in data["blocks"]))
+        mock_eph.assert_not_called()
+
+    @mock.patch("slack_integration.closet_commands.notify_closet_channel_ephemeral")
+    def test_loans_command_from_elsewhere_posts_summary_ephemeral(self, mock_eph):
+        mock_eph.return_value = {"ok": True}
         resp = _post_command(
             client=self.client,
             secret="test_secret",
@@ -89,11 +113,12 @@ class SlackClosetCommandTests(ClosetTestMixin, TestCase):
                 "text": "",
                 "user_id": "U_owner",
                 "team_id": "T_test",
+                "channel_id": "D0123456789",
             },
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("loans summary", resp.json()["text"].lower())
-        mock_dm.assert_called_once()
+        mock_eph.assert_called_once()
 
 
 @override_settings(
@@ -110,7 +135,7 @@ class SlackClosetInteractionTests(ClosetTestMixin, TestCase):
         SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_owner", user=self.owner)
         SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_borrower", user=self.borrower)
 
-    @mock.patch("slack_integration.interactions.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.interactions.notify_closet_channel_ephemeral")
     @mock.patch("slack_integration.interactions.schedule_closet_slack_notify")
     def test_approve_button_approves_request(self, mock_schedule, mock_confirm):
         row = self.make_request(item=self.item, requester=self.borrower)
@@ -127,7 +152,7 @@ class SlackClosetInteractionTests(ClosetTestMixin, TestCase):
         mock_confirm.assert_called()
         mock_schedule.assert_called()
 
-    @mock.patch("slack_integration.interactions.notify_slack_action_confirmation")
+    @mock.patch("slack_integration.interactions.notify_closet_channel_ephemeral")
     def test_decline_button_declines_request(self, mock_confirm):
         row = self.make_request(item=self.item, requester=self.borrower)
         payload = {
@@ -152,3 +177,28 @@ class SlackClosetInteractionTests(ClosetTestMixin, TestCase):
             HTTP_X_SLACK_SIGNATURE="v0=bad",
         )
         self.assertEqual(resp.status_code, 403)
+
+
+@override_settings(
+    SLACK_CLOSET_CHANNEL_ID="C_closet",
+    SLACK_CLOSET_NOTIFICATIONS_ENABLED=True,
+    SLACK_BOT_TOKEN="xoxb-test",
+)
+class ClosetChannelEphemeralNotifyTests(ClosetTestMixin, TestCase):
+    def setUp(self):
+        self.create_users()
+        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_owner", user=self.owner)
+
+    @mock.patch("slack_integration.notify.slack_chat_post_ephemeral", return_value={"ok": True})
+    def test_posts_ephemeral_to_closet_channel(self, mock_eph):
+        from slack_integration.notify import notify_closet_channel_ephemeral
+
+        notify_closet_channel_ephemeral(
+            self.owner,
+            text="Hello",
+            blocks=[{"type": "section"}],
+        )
+        mock_eph.assert_called_once()
+        self.assertEqual(mock_eph.call_args.kwargs["channel"], "C_closet")
+        self.assertEqual(mock_eph.call_args.kwargs["user"], "U_owner")
+        self.assertEqual(mock_eph.call_args.kwargs["text"], "Hello")

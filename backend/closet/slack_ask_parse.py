@@ -106,6 +106,11 @@ _SCAN_STOP = _STOP | frozenset(
         "still",
         "very",
         "really",
+        "love",
+        "loved",
+        "loves",
+        "tho",
+        "though",
         "thanks",
         "thank",
         "thx",
@@ -129,7 +134,8 @@ _CHATTER_RE = re.compile(
     re.I,
 )
 _NOT_ASK_RE = re.compile(
-    r"\b(?:returned|returning|brought back|dropping off|dropped off)\b",
+    r"\b(?:returned|returning|brought back|dropping off|dropped off)\b"
+    r"|\blove\s+(?:this|that|it)\b",
     re.I,
 )
 
@@ -361,10 +367,19 @@ def score_item_for_scan_term(term: str, *, name: str, description: str = "", tag
     if " " in term:
         return base
     name_tokens = tokenize_query(name)
-    if len(name_tokens) <= 1:
-        return base
     collapsed_term = collapse_alnum(term)
     collapsed_name = collapse_alnum(name)
+    if len(name_tokens) <= 1:
+        # "love" must not hit "glove" via infix/suffix or fuzzy ratio; "glove"
+        # may still hit "gloves" as a prefix of the name token.
+        if collapsed_term and collapsed_name and collapsed_term == collapsed_name:
+            return base
+        q_tokens = tokenize_query(term)
+        if q_tokens and name_tokens and q_tokens <= name_tokens:
+            return base
+        if collapsed_term and collapsed_name and collapsed_name.startswith(collapsed_term):
+            return base
+        return 0.0
     if not collapsed_term or not collapsed_name or collapsed_term not in collapsed_name:
         return 0.0
     frac = len(collapsed_term) / len(collapsed_name)
@@ -467,6 +482,11 @@ def _parse_qty_token(raw: str | None) -> int | None:
         n = int(token)
         return n if n > 0 else None
     return _WORD_QTY.get(token)
+
+
+def parse_request_command_text(text: str) -> tuple[str, int | None]:
+    """Item name and optional leading quantity from `/request` command text."""
+    return _clean_item_phrase(text or "")
 
 
 def _clean_item_phrase(phrase: str) -> tuple[str, int | None]:

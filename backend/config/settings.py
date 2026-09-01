@@ -304,7 +304,7 @@ SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
 SLACK_PROMPTS_CHANNEL_ID = _env_slack_channel_id("SLACK_PROMPTS_CHANNEL_ID")
 # If set, Events API message parsing will only run in this channel. Defaults to SLACK_PROMPTS_CHANNEL_ID.
 SLACK_SONGADAY_CHANNEL_ID = _env_slack_channel_id("SLACK_SONGADAY_CHANNEL_ID")
-# Public #closet channel for borrow-ask ingest. Must differ from Song-a-Day. Invite ArborBot.
+# Public #closet channel for /request I Do prompts. Must differ from Song-a-Day. Invite ArborBot.
 SLACK_CLOSET_CHANNEL_ID = _env_slack_channel_id("SLACK_CLOSET_CHANNEL_ID")
 # Optional: private channel for ingest failure notifications (ops visibility).
 SLACK_DEBUG_CHANNEL_ID = _env_slack_channel_id("SLACK_DEBUG_CHANNEL_ID")

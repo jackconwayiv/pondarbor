@@ -7,6 +7,7 @@ from closet.slack_ask_parse import (
     item_query_from_message_matches,
     looks_like_chatter,
     parse_closet_ask,
+    parse_request_command_text,
     score_closet_items_for_message,
     score_closet_items_for_query,
     score_item_for_query,
@@ -127,6 +128,14 @@ class ClosetAskParseTests(SimpleTestCase):
             self.assertIsNotNone(parsed, msg=text)
             self.assertEqual(parsed.item_query.casefold(), expected, msg=text)
 
+    def test_request_command_text(self):
+        self.assertEqual(parse_request_command_text("a weedwhacker")[0].casefold(), "weedwhacker")
+        query, qty = parse_request_command_text("4 placemats")
+        self.assertEqual(query.casefold(), "placemats")
+        self.assertEqual(qty, 4)
+        self.assertEqual(parse_request_command_text(""), ("", None))
+        self.assertEqual(parse_request_command_text("it"), ("", None))
+
 
 class ClosetAskMatchScoreTests(SimpleTestCase):
     def test_exact_name(self):
@@ -189,7 +198,21 @@ class ClosetMessageScanTests(SimpleTestCase):
     def test_chatter_helpers(self):
         self.assertTrue(looks_like_chatter("Thanks everyone"))
         self.assertTrue(looks_like_chatter("I returned the table saw"))
+        self.assertTrue(looks_like_chatter("Love this integration tho!"))
         self.assertFalse(looks_like_chatter("anyone got a multimeter"))
+
+    def test_compliment_does_not_scan_as_love(self):
+        items = [
+            SimpleNamespace(name="Glove", description="", tags=[]),
+            SimpleNamespace(name="Gloves", description="", tags=[]),
+        ]
+        ranked = score_closet_items_for_message("Love this integration tho!", items)
+        self.assertEqual(ranked, [])
+
+    def test_unigram_prefix_still_matches_plural(self):
+        items = [SimpleNamespace(name="Gloves", description="", tags=[])]
+        ranked = score_closet_items_for_message("glove?", items)
+        self.assertEqual([i.name for i in ranked], ["Gloves"])
 
     def test_item_query_from_scan(self):
         items = [SimpleNamespace(name="Fluke Multimeter", description="", tags=[])]

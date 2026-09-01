@@ -8,7 +8,7 @@ from closet.models import BorrowRequest, ClosetChannelAsk, ClosetChannelAskOffer
 from closet.tests.helpers import ClosetTestMixin
 from slack_integration.models import SlackIdentity
 
-from slack_integration.tests.test_closet_slack import _post_interaction, _slack_sig
+from slack_integration.tests.test_closet_slack import _post_command, _post_interaction, _slack_sig
 
 
 def _post_events(*, client, body: dict, secret: str, timestamp: str = "1714060800"):
@@ -58,104 +58,29 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
         self.make_friends(self.owner, self.borrower)
         SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_owner", user=self.owner)
         SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_borrower", user=self.borrower)
-        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_friend2", user=self.friend_two)
 
-    def test_non_ask_is_silent(self):
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
-        ):
-            resp = _post_events(
-                client=self.client,
-                body=_closet_message_body(text="Thanks everyone"),
-                secret="test_secret",
-            )
-        self.assertEqual(resp.status_code, 200)
-        mock_post.assert_not_called()
-        mock_dm.assert_not_called()
-        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
-
-    def test_thread_reply_ignored(self):
-        with mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post:
-            _post_events(
-                client=self.client,
-                body=_closet_message_body(text="Does anyone have a table saw?", thread_ts="111.0", ts="111.2"),
-                secret="test_secret",
-            )
-        mock_post.assert_not_called()
-        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
-
-    def test_ask_with_matches_dms_and_ephemeral_and_crowd(self):
+    def test_channel_messages_do_not_create_asks(self):
         self.make_item(owner=self.owner, name="Table saw")
+        self.make_item(owner=self.owner, name="Fluke Multimeter")
         with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}) as mock_eph,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
-        ):
-            resp = _post_events(
-                client=self.client,
-                body=_closet_message_body(text="Does anyone have a table saw?"),
-                secret="test_secret",
-            )
-        self.assertEqual(resp.status_code, 200)
-        ask = ClosetChannelAsk.objects.get()
-        self.assertEqual(ask.item_query.casefold(), "table saw")
-        self.assertEqual(ask.requester_user_id, self.borrower.id)
-        mock_dm.assert_called()
-        mock_eph.assert_called()
-        mock_post.assert_called()
-        crowd_kwargs = mock_post.call_args.kwargs
-        self.assertIn("I Do", json.dumps(crowd_kwargs["blocks"]))
-        self.assertTrue(crowd_kwargs.get("reply_broadcast"))
-        dm_blocks = json.dumps(mock_dm.call_args.kwargs["blocks"])
-        self.assertIn("Request loan", dm_blocks)
-        self.assertNotIn(" (loaned)", dm_blocks)
-
-    def test_loaned_match_is_flagged(self):
-        item = self.make_item(owner=self.owner, name="Table saw", holder=self.friend_two)
-        self.make_active_loan(item=item, owner=self.owner, borrower=self.friend_two)
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}),
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}),
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
-        ):
-            _post_events(
-                client=self.client,
-                body=_closet_message_body(text="Does anyone have a table saw?"),
-                secret="test_secret",
-            )
-        dm_text = json.dumps(mock_dm.call_args.kwargs["blocks"])
-        self.assertIn("loaned", dm_text)
-
-    def test_no_matches_skips_requester_dm_still_posts_crowd(self):
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}) as mock_eph,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
-        ):
-            _post_events(
-                client=self.client,
-                body=_closet_message_body(text="Does anyone have a table saw?"),
-                secret="test_secret",
-            )
-        mock_dm.assert_not_called()
-        mock_eph.assert_called()
-        self.assertIn("No matching items", mock_eph.call_args.kwargs["text"])
-        mock_post.assert_called_once()
-        self.assertTrue(mock_post.call_args.kwargs.get("reply_broadcast"))
-        self.assertEqual(ClosetChannelAsk.objects.count(), 1)
-
-    def test_unlinked_user_gets_ephemeral_no_ask(self):
-        body = _closet_message_body(text="Does anyone have a table saw?")
-        body["event"]["user"] = "U_stranger"
-        with (
-            mock.patch("slack_integration.views.slack_users_info", return_value={"ok": True, "user": {"profile": {"email": "nope@example.com"}}}),
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}) as mock_eph,
             mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
         ):
-            _post_events(client=self.client, body=body, secret="test_secret")
-        mock_eph.assert_called()
+            for text in (
+                "Does anyone have a table saw?",
+                "multimeter?",
+                "Thanks everyone",
+                "I returned the table saw",
+                "thinking about weekend plans",
+            ):
+                resp = _post_events(
+                    client=self.client,
+                    body=_closet_message_body(text=text, event_id=f"Ev_{text[:12]}", ts=f"111.{len(text)}"),
+                    secret="test_secret",
+                )
+                self.assertEqual(resp.status_code, 200, msg=text)
         mock_post.assert_not_called()
+        mock_dm.assert_not_called()
         self.assertEqual(ClosetChannelAsk.objects.count(), 0)
 
     def test_songaday_channel_still_ignores_closet_phrasing_without_url(self):
@@ -167,118 +92,104 @@ class ClosetChannelAskIngestTests(ClosetTestMixin, TestCase):
         mock_post.assert_not_called()
         self.assertEqual(ClosetChannelAsk.objects.count(), 0)
 
-    def test_inventory_word_without_ask_phrase_still_matches(self):
-        self.make_item(owner=self.owner, name="Fluke Multimeter")
+
+@override_settings(
+    SLACK_SIGNING_SECRET="test_secret",
+    SLACK_BOT_TOKEN="xoxb-test",
+    SLACK_CLOSET_CHANNEL_ID="C_closet",
+    SLACK_CLOSET_NOTIFICATIONS_ENABLED=True,
+)
+class ClosetRequestCommandTests(ClosetTestMixin, TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.create_users()
+        self.make_friends(self.owner, self.borrower)
+        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_owner", user=self.owner)
+        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_borrower", user=self.borrower)
+
+    def _post(self, *, text: str, channel_id: str = "C_closet", user_id: str = "U_borrower"):
+        return _post_command(
+            client=self.client,
+            secret="test_secret",
+            params={
+                "command": "/request",
+                "text": text,
+                "user_id": user_id,
+                "team_id": "T_test",
+                "channel_id": channel_id,
+            },
+        )
+
+    def test_empty_text_is_ephemeral_usage(self):
+        resp = self._post(text="")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["response_type"], "ephemeral")
+        self.assertIn("/request", data["text"])
+        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
+
+    def test_unlinked_user_is_ephemeral_no_ask(self):
+        with mock.patch(
+            "slack_integration.views.slack_users_info",
+            return_value={"ok": True, "user": {"profile": {"email": "nope@example.com"}}},
+        ):
+            resp = self._post(text="table saw", user_id="U_stranger")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["response_type"], "ephemeral")
+        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
+
+    def test_in_closet_echoes_crowd_prompt_and_dms_matches(self):
+        self.make_item(owner=self.owner, name="Table saw")
         with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}) as mock_eph,
+            mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
             mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
         ):
-            resp = _post_events(
-                client=self.client,
-                body=_closet_message_body(text="multimeter?"),
-                secret="test_secret",
-            )
+            resp = self._post(text="a table saw", channel_id="C_closet")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["response_type"], "in_channel")
+        self.assertIn("I Do", json.dumps(data["blocks"]))
+        self.assertIn("table saw", data["text"].casefold())
+        mock_post.assert_not_called()
+        mock_dm.assert_called()
+        ask = ClosetChannelAsk.objects.get()
+        self.assertEqual(ask.item_query.casefold(), "table saw")
+        self.assertEqual(ask.requester_user_id, self.borrower.id)
+        self.assertEqual(ask.slack_channel_id, "C_closet")
+        dm_blocks = json.dumps(mock_dm.call_args.kwargs["blocks"])
+        self.assertIn("Request loan", dm_blocks)
+
+    def test_from_other_channel_posts_to_closet(self):
+        with (
+            mock.patch(
+                "slack_integration.closet_ask.slack_chat_post_message",
+                return_value={"ok": True, "ts": "222.2"},
+            ) as mock_post,
+            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
+        ):
+            resp = self._post(text="weedwhacker", channel_id="D0123456789")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["response_type"], "ephemeral")
+        self.assertIn("closet channel", data["text"].casefold())
+        mock_dm.assert_not_called()
+        mock_post.assert_called_once()
+        self.assertEqual(mock_post.call_args.kwargs["channel"], "C_closet")
+        self.assertIn("I Do", json.dumps(mock_post.call_args.kwargs["blocks"]))
+        ask = ClosetChannelAsk.objects.get()
+        self.assertEqual(ask.item_query.casefold(), "weedwhacker")
+        self.assertEqual(ask.slack_prompt_ts, "222.2")
+
+    def test_quantity_from_command_text(self):
+        with mock.patch(
+            "slack_integration.closet_ask.slack_chat_post_message",
+            return_value={"ok": True, "ts": "222.2"},
+        ):
+            resp = self._post(text="4 placemats", channel_id="D0123456789")
         self.assertEqual(resp.status_code, 200)
         ask = ClosetChannelAsk.objects.get()
-        self.assertEqual(ask.item_query.casefold(), "multimeter")
-        mock_dm.assert_called()
-        mock_eph.assert_called()
-        mock_post.assert_called()
-
-    def test_return_chatter_does_not_scan_inventory(self):
-        self.make_item(owner=self.owner, name="Table saw")
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
-        ):
-            _post_events(
-                client=self.client,
-                body=_closet_message_body(text="I returned the table saw"),
-                secret="test_secret",
-            )
-        mock_post.assert_not_called()
-        mock_dm.assert_not_called()
-        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
-
-    def test_thanks_stays_silent_even_when_closet_has_items(self):
-        self.make_item(owner=self.owner, name="Table saw")
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
-        ):
-            _post_events(
-                client=self.client,
-                body=_closet_message_body(text="Thanks everyone"),
-                secret="test_secret",
-            )
-        mock_post.assert_not_called()
-        mock_dm.assert_not_called()
-        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
-
-    def test_file_share_caption_is_still_an_ask(self):
-        body = _closet_message_body(text="Does anyone have a table saw?")
-        body["event"]["subtype"] = "file_share"
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}),
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm"),
-        ):
-            _post_events(client=self.client, body=body, secret="test_secret")
-        self.assertEqual(ClosetChannelAsk.objects.count(), 1)
-        mock_post.assert_called()
-
-    @override_settings(SLACK_CLOSET_CHANNEL_ID="https://pondarbor.slack.com/archives/C0123456789")
-    def test_closet_channel_id_extracted_from_archive_url(self):
-        body = _closet_message_body(text="Does anyone have a table saw?")
-        body["event"]["channel"] = "C0123456789"
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}),
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm"),
-        ):
-            _post_events(client=self.client, body=body, secret="test_secret")
-        self.assertEqual(ClosetChannelAsk.objects.count(), 1)
-        mock_post.assert_called()
-
-    def test_unrecognized_text_gets_ephemeral_not_channel_post(self):
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message") as mock_post,
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}) as mock_eph,
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm") as mock_dm,
-        ):
-            _post_events(
-                client=self.client,
-                body=_closet_message_body(text="thinking about weekend plans"),
-                secret="test_secret",
-            )
-        mock_post.assert_not_called()
-        mock_dm.assert_not_called()
-        mock_eph.assert_called()
-        self.assertIn("didn't look like a borrow request", mock_eph.call_args.kwargs["text"])
-        self.assertEqual(ClosetChannelAsk.objects.count(), 0)
-
-    def test_rich_text_blocks_without_text_field_still_parse(self):
-        body = _closet_message_body(text="")
-        body["event"]["blocks"] = [
-            {
-                "type": "rich_text",
-                "elements": [
-                    {
-                        "type": "rich_text_section",
-                        "elements": [{"type": "text", "text": "Does anyone have a table saw?"}],
-                    }
-                ],
-            }
-        ]
-        with (
-            mock.patch("slack_integration.closet_ask.slack_chat_post_message", return_value={"ok": True, "ts": "222.2"}) as mock_post,
-            mock.patch("slack_integration.closet_ask.slack_chat_post_ephemeral", return_value={"ok": True}),
-            mock.patch("slack_integration.closet_ask.notify_pondarbor_user_dm"),
-        ):
-            _post_events(client=self.client, body=body, secret="test_secret")
-        self.assertEqual(ClosetChannelAsk.objects.count(), 1)
-        mock_post.assert_called()
+        self.assertEqual(ask.item_query.casefold(), "placemats")
+        self.assertEqual(ask.quantity, 4)
 
 
 @override_settings(

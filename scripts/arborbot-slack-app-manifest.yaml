@@ -51,6 +51,11 @@ features:
       description: DM your Closet inbox (pending actions)
       usage_hint: ""
       should_escape: false
+    - command: /request
+      url: https://www.pondarbor.com/api/v1/slack/commands/
+      description: Ask to borrow something in #closet
+      usage_hint: "[item]"
+      should_escape: false
     - command: /loans
       url: https://www.pondarbor.com/api/v1/slack/commands/
       description: DM your loans and custody holdings summary

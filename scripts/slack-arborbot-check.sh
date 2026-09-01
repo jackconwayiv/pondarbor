@@ -66,6 +66,7 @@ echo "Slash /prompt: ${ORIGIN}/api/v1/slack/commands/"
 echo "Slash /quote: ${ORIGIN}/api/v1/slack/commands/"
 echo "Slash /randomquote: ${ORIGIN}/api/v1/slack/commands/"
 echo "Slash /closet: ${ORIGIN}/api/v1/slack/commands/"
+echo "Slash /request: ${ORIGIN}/api/v1/slack/commands/"
 echo "Slash /loans: ${ORIGIN}/api/v1/slack/commands/"
 echo "Interactivity: ${ORIGIN}/api/v1/slack/interactions/"
 

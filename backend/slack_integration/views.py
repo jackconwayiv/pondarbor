@@ -1,13 +1,12 @@
 import json
 import logging
-import threading
 from datetime import datetime
 from types import SimpleNamespace
 from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.db import IntegrityError, close_old_connections, connection, transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpResponseForbidden, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -39,7 +38,11 @@ from slack_integration.slack_api import (
     slack_users_info,
  )
 from slack_integration.slack_verify import verify_slack_request_signature
-from slack_integration.closet_commands import handle_slack_closet_command, handle_slack_loans_command
+from slack_integration.closet_commands import (
+    handle_slack_closet_command,
+    handle_slack_loans_command,
+    handle_slack_request_command,
+)
 from slack_integration.pondarbor_commands import handle_slack_pondarbor_command
 from slack_integration.quote_from_text import parse_slack_quote_command_text
 from slack_integration.quote_slack_format import format_random_quote_slack_message
@@ -379,6 +382,7 @@ def slack_commands(request):
     text = params.get("text") or ""
     team_id = (params.get("team_id") or "").strip()
     slack_user_id = (params.get("user_id") or "").strip()
+    channel_id = (params.get("channel_id") or "").strip()
 
     if command == "/pondarbor":
         user, err = _resolve_user_for_slack(team_id, slack_user_id)
@@ -411,6 +415,15 @@ def slack_commands(request):
     if command == "/loans":
         user, err = _resolve_user_for_slack(team_id, slack_user_id)
         return handle_slack_loans_command(user=user, err=err)
+    if command == "/request":
+        user, err = _resolve_user_for_slack(team_id, slack_user_id)
+        return handle_slack_request_command(
+            user=user,
+            err=err,
+            team_id=team_id,
+            text=text,
+            channel_id=channel_id,
+        )
     return _slack_ephemeral("Unknown command.")
 
 
@@ -525,71 +538,6 @@ def slack_events(request):
         return JsonResponse({"ok": True})
 
     closet_channel = normalize_slack_channel_id(getattr(settings, "SLACK_CLOSET_CHANNEL_ID", None) or "")
-    if closet_channel and channel_id == closet_channel:
-        ts = str(event.get("ts") or "").strip()
-        thread_ts = str(event.get("thread_ts") or "").strip()
-        logger.info(
-            "closet channel ingest channel=%s user=%s text=%r",
-            channel_id,
-            slack_user_id,
-            text[:200],
-        )
-
-        def _run_closet_ingest() -> None:
-            close_old_connections()
-            try:
-                from slack_integration.closet_ask import handle_closet_channel_message
-
-                outcome = handle_closet_channel_message(
-                    team_id=team_id,
-                    channel_id=channel_id,
-                    slack_user_id=slack_user_id,
-                    text=text,
-                    ts=ts,
-                    thread_ts=thread_ts,
-                )
-                mapped = {
-                    "posted": SlackSongadayIngestTrace.Outcome.closet_posted,
-                    "unlinked": SlackSongadayIngestTrace.Outcome.closet_unlinked,
-                    "post_failed": SlackSongadayIngestTrace.Outcome.closet_post_failed,
-                }.get(outcome, SlackSongadayIngestTrace.Outcome.closet_skip)
-                _trace(
-                    outcome=mapped,
-                    event_id=event_id,
-                    team_id=team_id,
-                    channel_id=channel_id,
-                    slack_user_id=slack_user_id,
-                    raw_text=text,
-                    detail=outcome or "",
-                )
-                _post_debug(
-                    text=f"[closet_ingest] outcome={outcome} channel={channel_id} user={slack_user_id} text={_truncate(text, 120)}"
-                )
-            except Exception:
-                logger.exception("closet channel ingest failed")
-                _trace(
-                    outcome=SlackSongadayIngestTrace.Outcome.exception,
-                    event_id=event_id,
-                    team_id=team_id,
-                    channel_id=channel_id,
-                    slack_user_id=slack_user_id,
-                    raw_text=text,
-                    detail="closet_ingest_exception",
-                )
-                _post_debug(
-                    text=f"[closet_ingest] exception channel={channel_id} user={slack_user_id} text={_truncate(text, 120)}"
-                )
-            finally:
-                close_old_connections()
-
-        # Slack retries if we don't ack within ~3s. Do the Slack/DB work after ack
-        # unless we're inside a test transaction (threads wouldn't see fixture rows).
-        if connection.in_atomic_block:
-            _run_closet_ingest()
-        else:
-            threading.Thread(target=_run_closet_ingest, daemon=True).start()
-        return JsonResponse({"ok": True})
-
     allowed_channel = _slack_songaday_channel_id()
     if allowed_channel and channel_id != allowed_channel:
         logger.info(

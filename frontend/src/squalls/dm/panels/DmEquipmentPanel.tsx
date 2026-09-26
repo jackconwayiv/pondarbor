@@ -4,6 +4,8 @@ import {
   EQUIPMENT_DEFINITIONS,
   EQUIPMENT_SLOTS,
   EQUIPMENT_SLOT_LABELS,
+  LOOT_RARITY_BORDER,
+  LOOT_RARITY_GLYPH,
 } from "../../shantiesEquipment";
 import type { EquipmentId } from "../../shantiesTypes";
 import { SQUALLS_HUD_COLORS } from "../../squallsTheme";
@@ -16,7 +18,7 @@ function EquipmentReferenceCard({ equipmentId }: { equipmentId: EquipmentId }) {
       {...DM_PANEL_CARD_PROPS}
       borderRadius="lg"
       borderWidth="2px"
-      borderColor="rgba(109, 79, 142, 0.8)"
+      borderColor={LOOT_RARITY_BORDER[def.rarity]}
       color={SQUALLS_HUD_COLORS.panelText}
       minH="8rem"
     >
@@ -24,7 +26,7 @@ function EquipmentReferenceCard({ equipmentId }: { equipmentId: EquipmentId }) {
         {def.emoji}
       </Text>
       <Text fontSize="sm" fontWeight="bold" textAlign="center" mt={1}>
-        {def.name}
+        {LOOT_RARITY_GLYPH[def.rarity]} {def.name}
       </Text>
       <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} textAlign="center" mt={1}>
         {EQUIPMENT_SLOT_LABELS[def.slot]}

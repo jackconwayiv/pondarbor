@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { ExploreTestContext, ExploreTestOption } from "./exploreTestPicker";
 import type { PortTownType } from "./portTowns";
+import type { CampaignProgress } from "./squallsCampaign";
 
 export type { ExploreTestContext, ExploreTestOption };
 
@@ -276,6 +277,7 @@ export type AdventureStripeProps = {
   renderDungeonName: (dungeon: DungeonType) => string;
   gameState?: GameStateTypes;
   onOpenCharacterSheet?: () => void;
+  campaign?: CampaignProgress;
 };
 
 export type WorldPanelProps = {

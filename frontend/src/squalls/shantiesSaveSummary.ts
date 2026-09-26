@@ -7,6 +7,7 @@ import type {
   SaveSummaryLine,
 } from "./shantiesTypes";
 import type { ShantiesSaveData } from "./shantiesLocalSave";
+import { formatActSummaryLine } from "./squallsCampaign";
 import { minDeckSize } from "./combatDeck";
 
 const GAME_STATE_LABELS: Record<GameStateTypes, string> = {
@@ -81,6 +82,7 @@ export function buildSaveSummaryLines(
   return [
     { label: "Captain", value: `${hero.name} (${hero.class})` },
     { label: "Day", value: String(day) },
+    { label: "Act", value: formatActSummaryLine(data.campaign) },
     { label: "HP", value: `${hero.current_hp} / ${hero.max_hp}` },
     { label: "Gold", value: String(hero.gold) },
     { label: "XP", value: String(hero.xp) },

@@ -1,5 +1,6 @@
-import { Box, Button, HStack, Text } from "@chakra-ui/react";
+import { Box, Button, HStack, Text, VStack } from "@chakra-ui/react";
 import { getDungeonCombatPlaceLabel } from "./dungeonExplore";
+import CampaignObjectiveChip from "./CampaignObjectiveChip";
 import type { AdventureStripeProps } from "./shantiesTypes";
 import { SQUALLS_HUD_COLORS } from "./squallsTheme";
 
@@ -44,50 +45,56 @@ export default function AdventureStripe(props: AdventureStripeProps) {
     location,
     currentDungeon,
     onOpenCharacterSheet,
+    campaign,
   } = props;
   const placeLabel = formatStripePlaceLabel(props);
   const placePrefix = stripePlacePrefix(gameState, location, currentDungeon);
 
   return (
-    <HStack w="100%" gap={2} align="center" minW={0}>
-      <Box
-        flex={1}
-        minW={0}
-        px={2}
-        py={1}
-        borderRadius="md"
-        bg="rgba(0, 0, 0, 0.16)"
-        borderWidth="1px"
-        borderColor={SQUALLS_HUD_COLORS.panelBorder}
-      >
-        <Text
-          fontSize="sm"
-          fontWeight="semibold"
-          lineClamp={2}
+    <VStack w="100%" gap={1.5} align="stretch" minW={0}>
+      <HStack w="100%" gap={2} align="center" minW={0}>
+        <Box
+          flex={1}
           minW={0}
-          color={SQUALLS_HUD_COLORS.panelText}
+          px={2}
+          py={1}
+          borderRadius="md"
+          bg="rgba(0, 0, 0, 0.16)"
+          borderWidth="1px"
+          borderColor={SQUALLS_HUD_COLORS.panelBorder}
         >
-          {placePrefix}
-          {placeLabel}
-        </Text>
-      </Box>
-      <Button
-        type="button"
-        size="xs"
-        minW="2rem"
-        h="2rem"
-        px={0}
-        flexShrink={0}
-        variant="ghost"
-        color={SQUALLS_HUD_COLORS.panelText}
-        borderWidth="1px"
-        borderColor={SQUALLS_HUD_COLORS.panelBorder}
-        bg="rgba(0,0,0,0.2)"
-        aria-label="Open character details"
-        onClick={onOpenCharacterSheet}
-      >
-        📜
-      </Button>
-    </HStack>
+          <Text
+            fontSize="sm"
+            fontWeight="semibold"
+            lineClamp={2}
+            minW={0}
+            color={SQUALLS_HUD_COLORS.panelText}
+          >
+            {placePrefix}
+            {placeLabel}
+          </Text>
+        </Box>
+        <Button
+          type="button"
+          size="xs"
+          minW="2rem"
+          h="2rem"
+          px={0}
+          flexShrink={0}
+          variant="ghost"
+          color={SQUALLS_HUD_COLORS.panelText}
+          borderWidth="1px"
+          borderColor={SQUALLS_HUD_COLORS.panelBorder}
+          bg="rgba(0,0,0,0.2)"
+          aria-label="Open character details"
+          onClick={onOpenCharacterSheet}
+        >
+          📜
+        </Button>
+      </HStack>
+      {campaign && gameState !== "battle" ? (
+        <CampaignObjectiveChip progress={campaign} />
+      ) : null}
+    </VStack>
   );
 }

@@ -1,6 +1,10 @@
 import { Button, Text, chakra } from "@chakra-ui/react";
 
-import { EQUIPMENT_DEFINITIONS } from "./shantiesEquipment";
+import {
+  EQUIPMENT_DEFINITIONS,
+  LOOT_RARITY_BORDER,
+  LOOT_RARITY_GLYPH,
+} from "./shantiesEquipment";
 import type { EquipmentId } from "./shantiesTypes";
 
 const CardRoot = chakra("div");
@@ -31,7 +35,7 @@ export default function EquipmentSellCard({
       gap={1}
       borderRadius="lg"
       borderWidth="2px"
-      borderColor="purple.400"
+      borderColor={LOOT_RARITY_BORDER[def.rarity]}
       bg="white"
       color="gray.900"
       boxShadow="sm"
@@ -40,7 +44,7 @@ export default function EquipmentSellCard({
         {def.emoji}
       </Text>
       <Text fontSize="xs" fontWeight="bold" textAlign="center" lineHeight="short" px={1}>
-        {def.name}
+        {LOOT_RARITY_GLYPH[def.rarity]} {def.name}
       </Text>
       <Button size="2xs" colorPalette="orange" mt={0.5} onClick={onSell}>
         {sellLabel}

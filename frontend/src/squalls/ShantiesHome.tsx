@@ -202,6 +202,7 @@ export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
             renderIslandName={game.renderIslandName}
             renderDungeonName={game.renderDungeonName}
             onOpenCharacterSheet={openCharacterSheet}
+            campaign={game.campaign}
           />
         }
         world={

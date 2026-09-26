@@ -80,8 +80,14 @@ import {
   type ShopVariant,
 } from "./shantiesTypes";
 
+import {
+  createInitialCampaignProgress,
+  normalizeCampaignProgress,
+  type CampaignProgress,
+} from "./squallsCampaign";
+
 export const SHANTIES_STORAGE_KEY = "pondarbor.squalls.v1";
-export const SHANTIES_SAVE_VERSION = 18;
+export const SHANTIES_SAVE_VERSION = 19;
 
 const GAME_STATES: GameStateTypes[] = [
   "lobby",
@@ -146,6 +152,8 @@ export type ShantiesSaveData = {
   nearPortTown: boolean;
   levelUpPicksRemaining: number;
   levelUpCardChoices: CardId[];
+  /** Campaign acts / scenario objective progress. */
+  campaign: CampaignProgress;
 };
 
 type ShantiesSavePayload = {
@@ -210,6 +218,15 @@ export function createDefaultSaveData(): ShantiesSaveData {
     nearPortTown: false,
     levelUpPicksRemaining: 0,
     levelUpCardChoices: [],
+    campaign: createInitialCampaignProgress(),
+  };
+}
+
+function migrateV18ToV19(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  return {
+    ...raw,
+    campaign: normalizeCampaignProgress(raw.campaign),
   };
 }
 
@@ -494,6 +511,11 @@ function resolveSavePayload(parsed: Record<string, unknown>): {
   if (version === 17) {
     data = migrateV17ToV18(data);
     version = 18;
+  }
+
+  if (version === 18) {
+    data = migrateV18ToV19(data);
+    version = 19;
   }
 
   if (version !== SHANTIES_SAVE_VERSION) return null;
@@ -981,6 +1003,7 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
     nearPortTown,
     levelUpPicksRemaining,
     levelUpCardChoices,
+    campaign: normalizeCampaignProgress(raw.campaign),
   };
 }
 

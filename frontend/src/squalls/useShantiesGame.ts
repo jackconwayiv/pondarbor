@@ -164,6 +164,12 @@ import {
   applySelfDefendCard,
 } from "./combatPlayHelpers";
 import { isDeckValid } from "./deckValidation";
+import {
+  applyCampaignEvent,
+  createInitialCampaignProgress,
+  type CampaignEvent,
+  type CampaignProgress,
+} from "./squallsCampaign";
 import { type CardId } from "./squallsCardCatalog";
 import { CARD_CATALOG } from "./squallsCardCatalog";
 import { heroLevelFromXp } from "./squallsXpProgression";
@@ -318,6 +324,9 @@ export function useShantiesGame() {
   const [levelUpCardChoiceIds, setLevelUpCardChoiceIds] = useState<CardId[]>(
     initialSave.levelUpCardChoices ?? [],
   );
+  const [campaign, setCampaign] = useState<CampaignProgress>(
+    initialSave.campaign ?? createInitialCampaignProgress(),
+  );
   const [heroEvasiveStacks, setHeroEvasiveStacks] = useState(0);
   const [characterSheetRequest, setCharacterSheetRequest] = useState<
     { tab: "deck" } | null
@@ -328,6 +337,10 @@ export function useShantiesGame() {
   const clearChestInteraction = useCallback(() => {
     setChestMessage(null);
     setForceOpenAttempted(false);
+  }, []);
+
+  const noteCampaignEvent = useCallback((event: CampaignEvent) => {
+    setCampaign((prev) => applyCampaignEvent(prev, event));
   }, []);
 
   const resetEncounterModifiers = useCallback((scope: EncounterScope) => {
@@ -503,6 +516,7 @@ export function useShantiesGame() {
       nearPortTown,
       levelUpPicksRemaining,
       levelUpCardChoices: levelUpCardChoiceIds,
+      campaign,
     });
   }, [
     gameState,
@@ -537,6 +551,7 @@ export function useShantiesGame() {
     nearPortTown,
     levelUpPicksRemaining,
     levelUpCardChoiceIds,
+    campaign,
   ]);
 
   const grantLootItem = useCallback((item: CombatLootItem) => {
@@ -768,6 +783,7 @@ export function useShantiesGame() {
     setNearPortTown(false);
     setLevelUpPicksRemaining(0);
     setLevelUpCardChoiceIds([]);
+    setCampaign(createInitialCampaignProgress());
     resetCombatState();
     setCombatVictory(false);
     setGameState("home");
@@ -841,7 +857,8 @@ export function useShantiesGame() {
     setLocation("dungeon");
     setCurrentIndoorArea(dungeon.areaId);
     setGameState("home");
-  }, [currentDungeon, hero.inventory]);
+    noteCampaignEvent("enter_dungeon");
+  }, [currentDungeon, hero.inventory, noteCampaignEvent]);
 
   const returnToIslandFromDungeon = useCallback(() => {
     if (currentDungeon?.kind === "wreck") {
@@ -870,7 +887,8 @@ export function useShantiesGame() {
     setGameState("home");
     setActiveEvent(null);
     setDay((d) => d + 1);
-  }, [resetEncounterModifiers]);
+    noteCampaignEvent("land");
+  }, [noteCampaignEvent, resetEncounterModifiers]);
 
   const abandonDiscoveredIsland = useCallback(() => {
     setCurrentIsland(null);
@@ -886,7 +904,8 @@ export function useShantiesGame() {
     setGameState("home");
     setActiveEvent(null);
     setDay((d) => d + 1);
-  }, []);
+    noteCampaignEvent("visit_port");
+  }, [noteCampaignEvent]);
 
   const sailPastPortTown = useCallback(() => {
     setCurrentPortTown(null);
@@ -915,10 +934,11 @@ export function useShantiesGame() {
         setCurrentDungeon(unlocked);
         setLocation("dungeon");
         setCurrentIndoorArea(unlocked.areaId);
+        noteCampaignEvent("enter_dungeon");
       }
       setGameState("home");
     },
-    [activeEvent?.dungeonKind, currentIsland, hero.inventory, resetEncounterModifiers],
+    [activeEvent?.dungeonKind, currentIsland, hero.inventory, noteCampaignEvent, resetEncounterModifiers],
   );
 
   const resolveShipwreckDive = useCallback(
@@ -942,8 +962,9 @@ export function useShantiesGame() {
       setActiveEvent(null);
       setEventLoot([]);
       setGameState("home");
+      noteCampaignEvent("enter_dungeon");
     },
-    [currentIsland, hero.inventory, resetEncounterModifiers],
+    [currentIsland, hero.inventory, noteCampaignEvent, resetEncounterModifiers],
   );
 
   const cancelExploreTest = useCallback(() => {
@@ -1027,6 +1048,7 @@ export function useShantiesGame() {
       setExploreTestContext(null);
 
       if (exploreTestContext === "sea") {
+        noteCampaignEvent("sail");
         const { remainingDeck } = drawSeaEvent(seaEventDeck);
         setSeaEventDeck(remainingDeck);
 
@@ -1172,6 +1194,7 @@ export function useShantiesGame() {
       initiateDungeonBattle,
       initiateIslandBattle,
       location,
+      noteCampaignEvent,
       resetEncounterModifiers,
       seaEventDeck,
     ],
@@ -1360,6 +1383,8 @@ export function useShantiesGame() {
   }, [forceOpenAttempted]);
 
   const dismissCombatVictory = useCallback(() => {
+    const slainBoss = victoryEnemies.some((enemy) => enemy.isBoss === true);
+    noteCampaignEvent(slainBoss ? "boss_slain" : "victory");
     setCombatVictory(false);
     setVictoryEnemies([]);
     setCombatLoot([]);
@@ -1369,7 +1394,7 @@ export function useShantiesGame() {
     setDay((d) => d + 1);
     clearDepletedIslandDungeon();
     setGameState("home");
-  }, [clearDepletedIslandDungeon, resetCombatState]);
+  }, [clearDepletedIslandDungeon, noteCampaignEvent, resetCombatState, victoryEnemies]);
 
   const playCombatCard = useCallback(
     (handIndex: number, targetIndex?: number) => {
@@ -1981,6 +2006,7 @@ export function useShantiesGame() {
     setActiveEvent,
     day,
     setDay,
+    campaign,
     hand,
     discardPile,
     combatLog,

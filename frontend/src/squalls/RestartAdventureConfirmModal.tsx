@@ -17,8 +17,8 @@ export default function RestartAdventureConfirmModal({
     <AppModal
       open={open}
       onOpenChange={onOpenChange}
-      title="Start a new adventure?"
-      description="Your current progress will be erased."
+      title="New voyage?"
+      description="Current progress sinks. Mid-fight saves will be lost."
       size="sm"
     >
       <HStack justify="flex-end" gap={2} pt={2}>
@@ -32,7 +32,7 @@ export default function RestartAdventureConfirmModal({
             onOpenChange(false);
           }}
         >
-          Restart
+          Begin anew
         </Button>
       </HStack>
     </AppModal>

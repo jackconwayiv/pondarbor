@@ -2,7 +2,11 @@ import { Text, chakra } from "@chakra-ui/react";
 import type { ComponentProps } from "react";
 import { useDraggable } from "@dnd-kit/core";
 
-import { EQUIPMENT_DEFINITIONS } from "./shantiesEquipment";
+import {
+  EQUIPMENT_DEFINITIONS,
+  LOOT_RARITY_BORDER,
+  LOOT_RARITY_GLYPH,
+} from "./shantiesEquipment";
 import type { EquipmentId } from "./shantiesTypes";
 
 const CardRoot = chakra("div");
@@ -15,6 +19,8 @@ type FaceProps = {
 /** Static equipment tile (equip tab look, no drag). */
 export function EquipmentCardFace({ equipmentId, rootProps }: FaceProps) {
   const def = EQUIPMENT_DEFINITIONS[equipmentId];
+  const rarityGlyph = LOOT_RARITY_GLYPH[def.rarity];
+  const borderColor = LOOT_RARITY_BORDER[def.rarity];
 
   return (
     <CardRoot
@@ -29,11 +35,11 @@ export function EquipmentCardFace({ equipmentId, rootProps }: FaceProps) {
       gap={1}
       borderRadius="lg"
       borderWidth="2px"
-      borderColor="purple.400"
+      borderColor={borderColor}
       bg="white"
       color="gray.900"
       boxShadow="sm"
-      title={def.description}
+      title={`${rarityGlyph} ${def.name} — ${def.description}`}
       {...rootProps}
     >
       <Text fontSize="xl" lineHeight={1} aria-hidden>
@@ -46,7 +52,7 @@ export function EquipmentCardFace({ equipmentId, rootProps }: FaceProps) {
         lineHeight="short"
         px={1}
       >
-        {def.name}
+        {rarityGlyph} {def.name}
       </Text>
     </CardRoot>
   );
@@ -78,7 +84,6 @@ export default function EquipmentCard({
         ...attributes,
         cursor: disabled ? "default" : "grab",
         opacity: isDragging ? 0.35 : 1,
-        touchAction: "none",
       }}
     />
   );

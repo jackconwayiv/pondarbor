@@ -26,6 +26,22 @@ export const EQUIPMENT_SLOT_LABELS: Record<EquipmentSlot, string> = {
   pet: "Pet",
 };
 
+export type LootRarity = "common" | "uncommon" | "rare" | "legendary";
+
+export const LOOT_RARITY_GLYPH: Record<LootRarity, string> = {
+  common: "○",
+  uncommon: "◇",
+  rare: "◆",
+  legendary: "★",
+};
+
+export const LOOT_RARITY_BORDER: Record<LootRarity, string> = {
+  common: "gray.400",
+  uncommon: "green.400",
+  rare: "blue.400",
+  legendary: "orange.400",
+};
+
 export type EquipmentCombatStats = {
   min: number;
   max: number;
@@ -36,6 +52,7 @@ export type EquipmentDefinition = {
   name: string;
   emoji: string;
   slot: EquipmentSlot;
+  rarity: LootRarity;
   description: string;
   /** Reference buy value for barter sell price (50% rounded down). */
   shopPrice?: number;
@@ -51,7 +68,8 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     name: "Rusty Cutlass",
     emoji: "🗡️",
     slot: "melee",
-    description: "A salt-crusted blade. 1–5 slashing damage.",
+    rarity: "common",
+    description: "Salt-crusted steel.",
     shopPrice: 20,
     tags: ["melee"] satisfies readonly CombatTag[],
     combat: { min: 1, max: 5 },
@@ -62,7 +80,8 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     name: "Sooty Pistol",
     emoji: "🔫",
     slot: "ranged",
-    description: "Black powder and hope. 1–4 piercing damage.",
+    rarity: "uncommon",
+    description: "Black powder and hope.",
     shopPrice: 40,
     tags: ["ranged"] satisfies readonly CombatTag[],
     combat: { min: 1, max: 4 },
@@ -73,7 +92,8 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     name: "Sailor's Garb",
     emoji: "🧥",
     slot: "armor",
-    description: "Well-worn kit. 1–4 armor when defending.",
+    rarity: "common",
+    description: "Well-worn kit.",
     shopPrice: 30,
     combat: { min: 1, max: 4 },
     cardClass: "light_armor",
@@ -83,7 +103,8 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     name: "Lockpick",
     emoji: "🪝",
     slot: "relic",
-    description: "Pick locked chests. May break on use.",
+    rarity: "uncommon",
+    description: "Pick locks. May break.",
     shopPrice: 35,
     cardClass: "scoundrel",
   },

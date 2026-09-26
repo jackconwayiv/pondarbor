@@ -213,7 +213,7 @@ const HARBOR = gameToAppNav(
 );
 const SQUALLS = gameToAppNav(
   GAMES_MENU_STAFF_ITEMS.find((g) => g.to === "/squalls")!,
-  "Roguelike pirate adventure game.",
+  "Pocket voyage RPG — quit mid-fight, resume the myth.",
 );
 
 export const NAV_CATEGORIES: NavCategory[] = [

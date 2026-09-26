@@ -17,6 +17,11 @@ import {
   hasResumableAdventure,
 } from "./shantiesSaveSummary";
 import { renderPortTownName } from "./portTowns";
+import {
+  formatActSummaryLine,
+  formatMidCombatResumeHint,
+  isMidCombatSaveState,
+} from "./squallsCampaign";
 import { SQUALLS_HUD_COLORS } from "./squallsTheme";
 
 export default function SquallsLobbyPage() {
@@ -27,6 +32,9 @@ export default function SquallsLobbyPage() {
 
   const save = readShantiesSave();
   const canResume = save ? hasResumableAdventure(save) : false;
+  const midCombat = save
+    ? isMidCombatSaveState(save.gameState, save.resumeGameState)
+    : false;
   const lobbySaveSummaryLines = useMemo(
     () =>
       save
@@ -39,6 +47,7 @@ export default function SquallsLobbyPage() {
     [save],
   );
   const lobbySavedAtLabel = formatSavedAt(readShantiesSaveWithMeta()?.savedAtMs ?? null);
+  const campaignLine = save ? formatActSummaryLine(save.campaign) : null;
 
   const startPlay = (intent: "resume" | "restart") => {
     navigate("/squalls/play", { state: { [intent]: true } });
@@ -60,12 +69,22 @@ export default function SquallsLobbyPage() {
       >
         <Heading>🏴‍☠️ Squalls & Shanties</Heading>
         <Text color={SQUALLS_HUD_COLORS.panelMuted}>
-          Chart yer course from the harbor — resume a saved voyage or begin anew.
+          Pocket voyage. Close mid-fight — return to the same hand.
         </Text>
 
         {save ? (
           <>
-            <Text color={SQUALLS_HUD_COLORS.panelMuted}>Yer saved adventure</Text>
+            <Text color={SQUALLS_HUD_COLORS.panelMuted}>Yer saved voyage</Text>
+            {midCombat ? (
+              <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelText}>
+                {formatMidCombatResumeHint()}
+              </Text>
+            ) : null}
+            {campaignLine ? (
+              <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted}>
+                {campaignLine}
+              </Text>
+            ) : null}
             <Box
               w="100%"
               borderWidth="1px"
@@ -108,16 +127,16 @@ export default function SquallsLobbyPage() {
             onClick={() => startPlay("resume")}
             disabled={!canResume}
           >
-            Resume playing
+            {midCombat ? "Resume battle" : "Resume voyage"}
           </PondButton>
           <PondButton colorPalette="sky" onClick={() => setRestartConfirmOpen(true)}>
-            {canResume ? "Restart adventure" : "Start adventure"}
+            {canResume ? "New voyage" : "Begin voyage"}
           </PondButton>
         </HStack>
 
         {!canResume ? (
           <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelSubtle}>
-            No adventure in progress — start a new voyage to set sail.
+            ⛵ Chart. Land. Strike.
           </Text>
         ) : null}
 

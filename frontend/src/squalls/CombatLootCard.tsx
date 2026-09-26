@@ -1,5 +1,8 @@
 import SquallsActionCard, { type SquallsActionAccent } from "./SquallsActionCard";
-import { EQUIPMENT_DEFINITIONS } from "./shantiesEquipment";
+import {
+  EQUIPMENT_DEFINITIONS,
+  LOOT_RARITY_GLYPH,
+} from "./shantiesEquipment";
 import { ITEM_DEFINITIONS } from "./shantiesItems";
 import type { CombatLootItem } from "./shantiesTypes";
 
@@ -31,7 +34,8 @@ function lootLabel(item: CombatLootItem): string {
   if (item.kind === "gold") return `+${item.amount} Gold`;
   if (item.kind === "xp") return `+${item.amount} XP`;
   if (item.kind === "equipment" && item.equipmentId) {
-    return EQUIPMENT_DEFINITIONS[item.equipmentId].name;
+    const def = EQUIPMENT_DEFINITIONS[item.equipmentId];
+    return `${LOOT_RARITY_GLYPH[def.rarity]} ${def.name}`;
   }
   if (item.kind === "item" && item.itemId) {
     const name = ITEM_DEFINITIONS[item.itemId].name;
@@ -40,12 +44,20 @@ function lootLabel(item: CombatLootItem): string {
   return "Spoils";
 }
 
+function lootSubtext(item: CombatLootItem): string {
+  if (item.claimed) return "Claimed";
+  if (item.kind === "equipment" && item.equipmentId) {
+    return EQUIPMENT_DEFINITIONS[item.equipmentId].description;
+  }
+  return "Tap to claim";
+}
+
 export default function CombatLootCard({ item, onClaim }: Props) {
   return (
     <SquallsActionCard
       emoji={lootEmoji(item)}
       label={lootLabel(item)}
-      subtext={item.claimed ? "Claimed" : "Tap to claim"}
+      subtext={lootSubtext(item)}
       accent={lootAccent(item)}
       disabled={item.claimed}
       onClick={onClaim}
